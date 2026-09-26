@@ -86,15 +86,16 @@ def main():
     assert database.read_bytes() == before
     assert temporary.read_bytes() == b"owned by another builder"
     temporary.unlink()
-    # A read-only cache must not be replaced. Skipped as root, where the
-    # kernel ignores the permission bits and the write would succeed.
+    # A read-only ROM folder cannot take the new cache, so the old one must stay.
+    # (A read-only cache file alone does not stop rename() on Linux.) Skipped as
+    # root, where the kernel ignores the permission bits and the write would succeed.
     if os.geteuid() != 0:
-        os.chmod(database, stat.S_IREAD)
+        os.chmod(rom, stat.S_IREAD | stat.S_IEXEC)
         try:
             run(sd, "--rebuild", expected=4)
-            assert database.read_bytes() == before and not temporary.exists()
         finally:
-            os.chmod(database, stat.S_IREAD | stat.S_IWRITE)
+            os.chmod(rom, stat.S_IRWXU)
+        assert database.read_bytes() == before and not temporary.exists()
     # A full arcade-sized directory must exceed the former 10,000-entry cap.
     for index in range(10001):
         (rom / f"arcade{index:05d}.nes").write_bytes(b"")
