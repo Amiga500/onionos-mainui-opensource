@@ -37,7 +37,7 @@ jobs:
         run: python -m pip install "clang-format==14.*"
 
       - name: Formatting
-        run: tools/format.py --check
+        run: python3 tools/format.py --check
 
       - name: Build
         run: make -j"$(nproc)"

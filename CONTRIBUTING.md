@@ -5,16 +5,16 @@ This is a handheld game launcher. Prefer small, direct changes and focused tests
 ## Before sending a patch
 
 ```sh
-make check          # unit suites and integration cases
-tools/format.py     # apply .clang-format to src/ and tests/
+make check               # unit suites and integration cases
+python3 tools/format.py  # apply .clang-format to src/ and tests/
 ```
 
-`tools/format.py --check` reports formatting problems without rewriting, which is what CI runs. Use clang-format 14, the version CI installs; other versions can lay out some code differently. If your system has a different version, install 14 in a virtual environment:
+`python3 tools/format.py --check` reports formatting problems without rewriting, which is what CI runs. Use clang-format 14, the version CI installs; other versions can lay out some code differently. If your system has a different version, install 14 in a virtual environment:
 
 ```sh
 python3 -m venv ~/.venvs/clang-format14
 ~/.venvs/clang-format14/bin/pip install "clang-format==14.*"
-PATH=~/.venvs/clang-format14/bin:$PATH tools/format.py
+PATH=~/.venvs/clang-format14/bin:$PATH python3 tools/format.py
 ```
 
 A green host build is not proof of device compatibility: if a change touches byte layouts, integer widths or anything platform-specific, say so, and run `make check-device` if you can.
