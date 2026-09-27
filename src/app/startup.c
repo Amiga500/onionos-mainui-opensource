@@ -278,7 +278,8 @@ int mainui_setup_video(MainUIApp *ui)
             ui->display->format->Gmask, ui->display->format->Bmask, 0);
     }
     if (!ui->screen || !mainui_theme_open_sd(&ui->theme, ui->dir, ui->base, ui->sd, &ui->config)) {
-        fprintf(stderr, "Cannot initialize theme/display: %s\n", SDL_GetError());
+        fprintf(stderr, "Cannot initialize theme/display: %s\n",
+                ui->screen && *ui->theme.error ? ui->theme.error : SDL_GetError());
         if (ui->screen && ui->screen != ui->display) {
             SDL_FreeSurface(ui->screen);
         }

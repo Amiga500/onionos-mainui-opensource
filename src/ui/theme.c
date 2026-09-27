@@ -427,12 +427,45 @@ static TTF_Font *bounded_font(const char *path, int size)
                : NULL;
 }
 
-static TTF_Font *font_open(const MainUITheme *theme, const char *name, int size)
+/* Onion's own last-resort font (src/common/theme/load.h FALLBACK_FONT). It is
+ * on internal flash, so it survives a damaged or incomplete SD card. */
+#define INTERNAL_FALLBACK_FONT "/customer/app/Exo-2-Bold-Italic.ttf"
+
+static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
 {
     char path[4096];
-    TTF_Font *font = mainui_theme_font_path(theme, name, path) ? bounded_font(path, size) : NULL;
+    /* Only the first font that fails completely is reported. */
+    bool report = !*theme->error;
+    bool requested = mainui_theme_font_path(theme, name, path);
+    TTF_Font *font = requested ? bounded_font(path, size) : NULL;
+    if (!font && report) {
+        snprintf(theme->error, sizeof theme->error, "Cannot open font %.60s (tried %.100s",
+                 name ? name : "(default)", requested ? path : "-");
+    }
     if (!font && join(path, theme->fallback, "Exo-2-Bold-Italic.ttf")) {
         font = bounded_font(path, size);
+        if (!font && report) {
+            size_t used = strlen(theme->error);
+            snprintf(theme->error + used, sizeof theme->error - used, ", %.100s", path);
+        }
+    }
+#ifdef MAINUI_ONION
+    if (!font) {
+        font = bounded_font(INTERNAL_FALLBACK_FONT, size);
+        if (!font && report) {
+            size_t used = strlen(theme->error);
+            snprintf(theme->error + used, sizeof theme->error - used, ", " INTERNAL_FALLBACK_FONT);
+        }
+    }
+#endif
+    if (report) {
+        if (font) {
+            *theme->error = '\0';
+        }
+        else {
+            size_t used = strlen(theme->error);
+            snprintf(theme->error + used, sizeof theme->error - used, ")");
+        }
     }
     return font;
 }
@@ -652,7 +685,10 @@ bool mainui_theme_open_sd(MainUITheme *t, const char *dir, const char *base, con
     }
     if (!t->font || !t->title_font || !t->grid_font || !t->hint_font || !t->menu_font ||
         !t->description_font || !t->detail_font) {
+        char error[sizeof t->error];
+        memcpy(error, t->error, sizeof error);
         mainui_theme_close(t);
+        memcpy(t->error, error, sizeof error);
         return false;
     }
     return true;

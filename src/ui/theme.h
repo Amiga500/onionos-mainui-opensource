@@ -56,6 +56,8 @@ typedef struct {
     char directory[4096], fallback[4096], sd[4096], profile[4096];
     SDL_Color color;
     int icon_margin;
+    /* First reason mainui_theme_open_sd() failed, when it is not an SDL error. */
+    char error[512];
 } MainUITheme;
 
 /* Load the selected theme, with the given built-in asset directory as fallback.
