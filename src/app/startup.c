@@ -501,9 +501,8 @@ void mainui_setup_render(MainUIApp *ui)
         cJSON *system_config = mainui_system_read(ui->sd ? ui->sd : ".");
         const cJSON *volume = cJSON_GetObjectItemCaseSensitive(system_config, "bgmvol");
         int level = cJSON_IsNumber(volume) ? volume->valueint : 20;
-        if (!mainui_audio_open(ui->theme.directory, ui->theme.fallback, level)) {
-            fprintf(stderr, "Theme audio unavailable: %s\n", SDL_GetError());
-        }
+        /* mainui_audio_open() logs the specific reason. */
+        mainui_audio_open(ui->theme.directory, ui->theme.fallback, level);
         cJSON_Delete(system_config);
     }
     mainui_audio_pause(ui->device_enabled && ui->device_status.sleeping == 1);

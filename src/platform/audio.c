@@ -88,13 +88,20 @@ void mainui_audio_volume(int volume)
     audio.volume_channel(-1, mixer_volume);
 }
 
+/* Report the failing step with its error before cleanup can overwrite it. */
+static bool audio_failed(const char *step)
+{
+    fprintf(stderr, "Theme audio unavailable: %s: %s\n", step, SDL_GetError());
+    return false;
+}
+
 bool mainui_audio_open(const char *theme, const char *fallback, int volume)
 {
     mainui_audio_close();
     const char *library = "libSDL_mixer-1.2.so.0";
     audio.module = SDL_LoadObject(library);
     if (!audio.module) {
-        return false;
+        return audio_failed("cannot load libSDL_mixer-1.2.so.0");
     }
 #define LOAD(member, name) resolve(name, &audio.member, sizeof audio.member)
     bool linked = LOAD(open, "Mix_OpenAudio") && LOAD(close, "Mix_CloseAudio") &&
@@ -106,7 +113,13 @@ bool mainui_audio_open(const char *theme, const char *fallback, int volume)
                   LOAD(pause_channels, "Mix_Pause") && LOAD(resume_channels, "Mix_Resume") &&
                   LOAD(free_music, "Mix_FreeMusic") && LOAD(free_wave, "Mix_FreeChunk");
 #undef LOAD
-    if (!linked || SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+    if (!linked) {
+        audio_failed("SDL_mixer is missing a function");
+        mainui_audio_close();
+        return false;
+    }
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+        audio_failed("SDL audio init failed");
         mainui_audio_close();
         return false;
     }
@@ -117,6 +130,7 @@ bool mainui_audio_open(const char *theme, const char *fallback, int volume)
      * 48000 here is the obvious thing to try. Not changed yet because it is
      * unverified on hardware. See docs/internal/DEVICE_AUDIO.md. */
     if (audio.open(44100, AUDIO_S16SYS, 2, 1024) != 0) {
+        audio_failed("Mix_OpenAudio failed");
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         mainui_audio_close();
         return false;
