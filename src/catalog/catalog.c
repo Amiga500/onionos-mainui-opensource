@@ -394,7 +394,8 @@ typedef enum {
     SCAN_OPEN,
     SCAN_READ,
     SCAN_STAT,
-    SCAN_LIMIT
+    SCAN_LIMIT,
+    SCAN_LINK
 } ScanFailure;
 
 typedef struct {
@@ -413,6 +414,14 @@ static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bo
         return false;
     }
     bool ok = true;
+    /* The scanned folder itself must not be a link either (Emu, App, RApp;
+     * ROM roots are checked separately with their ancestors). */
+    struct stat self;
+    if (lstat(page->path, &self) == 0 && S_ISLNK(self.st_mode)) {
+        *result = (ScanResult){SCAN_LINK, 0, ""};
+        free(scratch);
+        return false;
+    }
     DIR *dir = opendir(page->path);
     if (!dir) {
         *result = (ScanResult){SCAN_OPEN, errno, ""};
@@ -438,19 +447,30 @@ static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bo
         if (entry->d_type == DT_DIR || entry->d_type == DT_REG) {
             directory = entry->d_type == DT_DIR;
         }
+        else if (entry->d_type != DT_UNKNOWN) {
+            /* Symlinks, FIFOs and devices are never listed. Following a link
+             * could leave the ROM tree; FAT has none of these anyway. */
+            continue;
+        }
         else {
-            /* Unknown types and symlinks still resolve through stat. */
+            /* Classify without following links. */
             char path[MAINUI_PATH_MAX];
             struct stat info;
             if (!mainui_catalog_path(path, sd, page->path, entry->d_name)) {
                 ok = false;
                 break;
             }
-            if (stat(path, &info)) {
+            if (lstat(path, &info)) {
+                if (errno == ENOENT) {
+                    continue; /* Removed while scanning. */
+                }
                 *result = (ScanResult){SCAN_STAT, errno, ""};
                 snprintf(result->name, sizeof result->name, "%s", entry->d_name);
                 ok = false;
                 break;
+            }
+            if (!S_ISDIR(info.st_mode) && !S_ISREG(info.st_mode)) {
+                continue;
             }
             directory = S_ISDIR(info.st_mode);
         }
@@ -519,6 +539,10 @@ bool mainui_catalog_open(MainUICatalog *catalog, const char *sd, bool sensitive)
             snprintf(catalog->error, sizeof catalog->error,
                      "Systems folder Emu has more than %d entries", MAINUI_SCAN_ENTRY_LIMIT);
             break;
+        case SCAN_LINK:
+            snprintf(catalog->error, sizeof catalog->error,
+                     "Systems folder Emu is a symlink, which is not followed");
+            break;
         default:
             snprintf(catalog->error, sizeof catalog->error, "Cannot read systems (Emu)");
             break;
@@ -557,8 +581,12 @@ static bool optional_catalog(MainUICatalog *catalog, const char *sd, bool sensit
     if (stat(page->path, &info) && errno == ENOENT) {
         return true;
     }
-    if (!scan(page, catalog->sd, mode, sensitive, catalog->cancel)) {
-        snprintf(catalog->error, sizeof catalog->error, "Cannot read %s directory", directory);
+    ScanResult result;
+    if (!scan_result(page, catalog->sd, mode, sensitive, catalog->cancel, &result)) {
+        snprintf(catalog->error, sizeof catalog->error,
+                 result.kind == SCAN_LINK ? "%s is a symlink, which is not followed"
+                                          : "Cannot read %s directory",
+                 directory);
         return false;
     }
     catalog->source_stamp = mainui_file_stamp(page->path);

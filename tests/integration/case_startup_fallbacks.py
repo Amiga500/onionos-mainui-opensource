@@ -35,6 +35,15 @@ assert output.is_file()
 assert "Cannot open systems folder Emu: Not a directory" in result.stderr, result.stderr
 assert "starting with an empty Games list" in result.stderr, result.stderr
 
+# Emu as a symlink is not followed; startup still continues.
+linked = OUT / "emu-link"
+linked.mkdir()
+(linked / "Emu").symlink_to(bad.resolve(), target_is_directory=True)
+result, output = start(linked, ONION_THEME, ONION_THEME, "emu-link")
+assert result.returncode == 0, result.stderr
+assert "Emu is a symlink" in result.stderr, result.stderr
+assert "starting with an empty Games list" in result.stderr, result.stderr
+
 # No font anywhere: a clean exit that names the font, not an SDL error.
 fontless = OUT / "fontless"
 shutil.copytree(ONION_THEME / "skin", fontless / "skin")

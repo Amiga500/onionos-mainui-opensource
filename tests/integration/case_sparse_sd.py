@@ -133,3 +133,36 @@ assert "ROM removed, but saving the deletion" in result.stdout, result.stdout
 assert "preserved" not in result.stdout
 assert not (roms / "one.nes").exists()
 reservation.unlink()
+
+# Links inside the ROM tree are never followed: neither a linked folder that
+# leaves the tree nor a linked file is listed. Real entries still are.
+(roms / "kept.nes").write_bytes(b"ROM")
+linked = Path(tempfile.mkdtemp(prefix="outside-linked-", dir=BUILD))
+(linked / "secret.nes").write_bytes(b"external ROM")
+(roms / "escape").symlink_to(linked.resolve(), target_is_directory=True)
+(roms / "link.nes").symlink_to((linked / "secret.nes").resolve())
+run("cache")
+with sqlite3.connect(cache) as db:
+    paths = [row[0] for row in db.execute("SELECT path FROM Test_roms")]
+assert any(p.endswith("kept.nes") for p in paths), paths
+assert not [p for p in paths if "secret" in p or "escape" in p or "link.nes" in p], paths
+(roms / "escape").unlink()
+(roms / "link.nes").unlink()
+
+# The scanned folders themselves (Emu, App) are not followed when they are links.
+outside_emu = Path(tempfile.mkdtemp(prefix="outside-emu-", dir=BUILD))
+(outside_emu / "Test").mkdir()
+(outside_emu / "Test/config.json").write_text(
+    json.dumps(dict(label="Outside", rompath="../../Roms/Test", extlist="nes")))
+(sd / "Emu").rename(sd / "Emu-real")
+(sd / "Emu").symlink_to(outside_emu.resolve(), target_is_directory=True)
+refused = run("catalog-open", 3)
+assert refused.stdout.strip() == "0", refused.stdout
+assert "symlink" in refused.stderr, refused.stderr
+(sd / "Emu").unlink()
+(sd / "Emu-real").rename(sd / "Emu")
+(sd / "App").symlink_to(outside_emu.resolve(), target_is_directory=True)
+refused = run("apps-open", 3)
+assert refused.stdout.strip() == "0" and "symlink" in refused.stderr, refused
+(sd / "App").unlink()
+assert run("apps-open").stdout.strip() == "0"

@@ -30,10 +30,15 @@ int main(int argc, char **argv)
         cJSON_Delete(value);
         return ok ? 0 : 3;
     }
-    if (!strcmp(mode, "catalog-open")) {
+    if (!strcmp(mode, "catalog-open") || !strcmp(mode, "apps-open")) {
         MainUICatalog *catalog = calloc(1, sizeof *catalog);
-        bool ok = catalog && mainui_catalog_open(catalog, root, false);
+        bool ok =
+            catalog && (!strcmp(mode, "apps-open") ? mainui_catalog_apps(catalog, root, false)
+                                                   : mainui_catalog_open(catalog, root, false));
         if (catalog) {
+            if (!ok) {
+                fprintf(stderr, "%s\n", catalog->error);
+            }
             printf("%d\n", catalog->pages[0].count);
             mainui_catalog_close(catalog);
         }
