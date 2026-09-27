@@ -13,6 +13,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* ROMs over 2 GiB exist (multi-disc PBP). With a 32-bit off_t, stat() fails
+ * with EOVERFLOW on the armhf device and those files look missing. */
+_Static_assert(sizeof(off_t) == 8, "build with -D_FILE_OFFSET_BITS=64");
+
 char *mainui_read_text(const char *path, size_t max_bytes)
 {
     FILE *f = fopen(path, "rb");
