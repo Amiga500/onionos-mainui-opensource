@@ -38,4 +38,54 @@ for bad in ("../../evil.lang", "missing.lang", "notalang.txt"):
     title, stderr = settings(bad)
     assert title == english, bad
     assert "using built-in English" in stderr, (bad, stderr)
+
+# A language change that switches the built-in fallback font (English <-> other)
+# restarts MainUI when the theme relies on that fallback: the handoff resumes
+# Settings, as stock reloads its fonts immediately.
+import shutil  # noqa: E402
+theme = OUT / "missing-font-theme"
+shutil.copytree(ONION_THEME / "skin", theme / "skin")
+config = json.loads((ONION_THEME / "config.json").read_text())
+for section in config.values():
+    if isinstance(section, dict) and "font" in section:
+        section["font"] = "missing.ttf"
+(theme / "config.json").write_text(json.dumps(config))
+restart_sd = OUT / "restart-sd"
+(restart_sd / "Emu").mkdir(parents=True)
+(restart_sd / "system.json").write_text(json.dumps({"language": "en.lang"}))
+handoff = OUT / "handoff"
+handoff.mkdir()
+
+
+def run(inputs, name, theme_dir=theme):
+    args = [str(BUILD / "MainUI-dev"), "--sd-root", str(restart_sd), "--theme", str(theme_dir),
+            "--fallback", str(ONION_THEME), "--handoff-dir", str(handoff),
+            "--snapshot", str(OUT / (name + ".bmp"))]
+    if inputs:
+        args += ["--input", inputs]
+    return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=30)
+
+
+# Settings (RRRE), Change language row (DDDD), open (E), next language (D), choose (E).
+result = run("RRREDDDDEDE", "restart")
+assert result.returncode == 0, result.stderr
+chosen = json.loads((restart_sd / "system.json").read_text())["language"]
+assert not chosen.startswith("en.lang"), chosen
+returned = json.loads((handoff / "mainui-return.json").read_text())
+assert returned["committed"] and returned["resume"]["section"] == 5, returned
+assert not (handoff / "cmd_to_run.sh").exists()
+# The next start takes the return and opens Settings on the language row.
+resumed = run("", "resumed")
+assert resumed.returncode == 0, resumed.stderr
+assert not (handoff / "mainui-return.json").exists()
+settings = run("RRRE", "settings-direct")
+assert Image.open(OUT / "resumed.bmp").tobytes() == Image.open(OUT / "settings-direct.bmp").tobytes() or \
+    Image.open(OUT / "resumed.bmp").crop((0, 0, 640, 60)).tobytes() == \
+    Image.open(OUT / "settings-direct.bmp").crop((0, 0, 640, 60)).tobytes()
+
+# No restart when the theme's own fonts load: the change applies in place.
+(restart_sd / "system.json").write_text(json.dumps({"language": "en.lang"}))
+result = run("RRREDDDDEDE", "no-restart", ONION_THEME)
+assert result.returncode == 0, result.stderr
+assert not (handoff / "mainui-return.json").exists()
 print("startup_language: ok")

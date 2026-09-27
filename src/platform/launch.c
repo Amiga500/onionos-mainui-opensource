@@ -351,6 +351,63 @@ bool mainui_launch_publish(const char *directory, const cJSON *record, const Mai
     return ok;
 }
 
+bool mainui_launch_publish_restart(const char *directory, const cJSON *resume, char error[256])
+{
+    char path[4096], command[4096], envelope_path[4096];
+    if (!join(path, directory, "mainui-handoff") || !join(command, directory, "cmd_to_run.sh") ||
+        !join(envelope_path, directory, "mainui-return.json")) {
+        return false;
+    }
+    MainUIFileLock *lock = mainui_file_lock(path);
+    if (!lock) {
+        snprintf(error, 256, "Another runtime writer is active.");
+        return false;
+    }
+    bool ok = true;
+    FILE *pending = fopen(command, "rb");
+    if (pending) {
+        fclose(pending);
+        snprintf(error, 256, "A pending launch request was preserved.");
+        ok = false;
+    }
+    /* No command: Onion starts MainUI again, which takes this return and
+     * reopens the resumed screen. The record is required by the envelope
+     * format but unused when resuming Settings. */
+    cJSON *envelope = ok ? cJSON_CreateObject() : NULL;
+    cJSON *record = envelope ? cJSON_CreateObject() : NULL;
+    cJSON *copy = envelope ? cJSON_Duplicate(resume, true) : NULL;
+    ok = ok && envelope && record && copy && cJSON_AddNumberToObject(envelope, "schema", 1) &&
+         cJSON_AddBoolToObject(envelope, "committed", true) &&
+         cJSON_AddStringToObject(record, "label", "restart") != NULL;
+    if (ok && cJSON_AddItemToObject(envelope, "record", record)) {
+        record = NULL;
+    }
+    else {
+        ok = false;
+    }
+    if (ok && cJSON_AddItemToObject(envelope, "resume", copy)) {
+        copy = NULL;
+    }
+    else {
+        ok = false;
+    }
+    char *text = ok ? cJSON_PrintUnformatted(envelope) : NULL;
+    bool published = false;
+    ok = text && mainui_write_bytes_new_status(envelope_path, text, strlen(text), &published);
+    if (!ok && published) {
+        mainui_remove_file(envelope_path);
+    }
+    if (!ok && !*error) {
+        snprintf(error, 256, "Cannot prepare the restart.");
+    }
+    free(text);
+    cJSON_Delete(record);
+    cJSON_Delete(copy);
+    cJSON_Delete(envelope);
+    mainui_file_unlock(lock);
+    return ok;
+}
+
 cJSON *mainui_launch_take_return(const char *directory)
 {
     char path[4096];

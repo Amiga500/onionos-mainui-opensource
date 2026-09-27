@@ -21,6 +21,9 @@ bool mainui_launch_publish(const char *directory, const cJSON *record, const Mai
                            const cJSON *resume, char error[256]);
 /* Read/consume one return envelope only after the consumer removed the command.
  * Returns owned JSON or NULL. Invalid envelopes are consumed to avoid loops. */
+/* Publish only a committed return envelope (no command) so that the next
+ * MainUI start resumes the given screen. Used to restart MainUI in place. */
+bool mainui_launch_publish_restart(const char *directory, const cJSON *resume, char error[256]);
 cJSON *mainui_launch_take_return(const char *directory);
 void mainui_launch_clear_search(const char *directory);
 #endif

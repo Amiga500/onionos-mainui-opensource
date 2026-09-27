@@ -57,9 +57,11 @@ typedef struct {
     SDL_Color color;
     int icon_margin;
     /* A non-English language is saved: prefer wqy-microhei.ttc as fallback font.
-     * Read when the theme is opened; unlike stock, a later language change
-     * applies from the next start (docs/THEMES.md). */
+     * Read when the theme is opened; a language change that needs another
+     * fallback restarts MainUI (docs/THEMES.md). */
     bool language_font;
+    /* At least one theme font could not be opened and a built-in one is used. */
+    bool fallback_font_used;
     /* First reason mainui_theme_open_sd() failed, when it is not an SDL error. */
     char error[512];
 } MainUITheme;

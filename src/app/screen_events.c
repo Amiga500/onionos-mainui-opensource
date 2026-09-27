@@ -55,10 +55,33 @@ bool mainui_screen_language_open(MainUIApp *ui, SDLKey key)
         }
     }
     else if (key == SDLK_RETURN) {
+        const char *chosen =
+            ui->languages.selected >= 0 && ui->languages.selected < ui->languages.count
+                ? ui->languages.entries[ui->languages.selected].filename
+                : "en.lang";
+        bool language_font = strncmp(chosen, "en.lang", 7) != 0;
         if (mainui_language_select(&ui->languages, ui->sd)) {
             ui->language_open = false;
             mainui_languages_close(&ui->languages);
             ui->cached_start = -1;
+            /* Stock reloads its fonts on a language change. The built-in
+             * fallback differs by language, so when the theme relies on it,
+             * restart MainUI (Onion starts it again) and resume Settings. */
+            if (ui->theme.fallback_font_used && language_font != ui->theme.language_font &&
+                ui->handoff_dir) {
+                MainUIStack legacy;
+                cJSON *resume = mainui_session_snapshot(
+                    MAINUI_MENU_SETTINGS, NULL, NULL, &ui->settings_view, &ui->home_view, &legacy);
+                char error[256] = "";
+                if (resume && mainui_launch_publish_restart(ui->handoff_dir, resume, error)) {
+                    ui->running = false;
+                }
+                else {
+                    fprintf(stderr, "Language changed; fonts update at the next start: %s\n",
+                            error);
+                }
+                cJSON_Delete(resume);
+            }
         }
         else {
             snprintf(ui->message_title, 256, "Language");

@@ -442,6 +442,7 @@ static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
     bool report = !*theme->error;
     bool requested = mainui_theme_font_path(theme, name, path);
     TTF_Font *font = requested ? bounded_font(path, size) : NULL;
+    bool requested_ok = font != NULL;
     if (!font && report) {
         snprintf(theme->error, sizeof theme->error, "Cannot open font %.60s (tried %.100s",
                  name ? name : "(default)", requested ? path : "-");
@@ -471,6 +472,9 @@ static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
         }
     }
 #endif
+    if (font && !requested_ok) {
+        theme->fallback_font_used = true;
+    }
     if (report) {
         if (font) {
             *theme->error = '\0';
