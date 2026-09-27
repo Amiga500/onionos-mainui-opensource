@@ -214,7 +214,7 @@ Install into only the selected variant with this procedure. Switching Expert mod
 
 #### What the wrapper does
 
-On each launch, the wrapper checks for `.tmp_update/mainui-test/DISABLED` and whether `.tmp_update/mainui-test/MainUI` is executable. If the marker exists, or the test binary is missing or not executable, it runs `stock/MainUI` instead.
+On each launch, the wrapper checks for `.tmp_update/mainui-test/DISABLED` and whether `.tmp_update/mainui-test/MainUI` is executable. If the marker exists, or the test binary is missing or not executable, it runs `stock/MainUI` instead, provided that is executable; otherwise it still starts Open MainUI rather than no launcher.
 
 Otherwise it sets the library search path, changes to `/mnt/SDCARD/miyoo/app`, and runs the test binary with:
 
@@ -222,9 +222,9 @@ Otherwise it sets the library search path, changes to `/mnt/SDCARD/miyoo/app`, a
 --sd-root /mnt/SDCARD --device real --handoff-dir /tmp
 ```
 
-It uses `exec` and keeps the binary named `MainUI` so Onion's key monitor sees the expected process name. Output is silent unless `.tmp_update/config/.logging` exists. When enabled, stdout and stderr append to `.tmp_update/logs/MainUI.log`, including the exit-only [timing report](TIMING.md). Before a launch, a log of at least 1 MiB is moved to `MainUI.log.1`, replacing the previous rotated log. A single running session can exceed that size.
+It uses `exec` and keeps the binary named `MainUI` so Onion's key monitor sees the expected process name. Output is silent unless `.tmp_update/config/.logging` exists. When enabled, stdout and stderr append to `.tmp_update/logs/MainUI.log`, including the exit-only [timing report](TIMING.md). Before a launch, a log of at least 1 MiB is moved to `MainUI.log.1`, replacing the previous rotated log. A single running session can exceed that size. Logging is best effort: if the log cannot be written (full or read-only card), MainUI starts without one.
 
-**This is a manual fallback, not crash recovery.** The wrapper does not catch crashes, hangs, invalid executables or missing shared libraries. The stock backup must also exist and be executable for fallback to work.
+**This is a manual fallback, not crash recovery.** The wrapper does not catch crashes, hangs, invalid executables or missing shared libraries. The stock backup must also exist and be executable for the fallback to be used.
 
 #### Disable, update or uninstall the wrapper
 
