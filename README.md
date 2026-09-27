@@ -28,6 +28,10 @@ If something goes wrong, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md),
 
 Some newer labels (folder actions, Tweaks, the About device rows) appear in English regardless of the selected language, because their translation IDs do not exist in Onion's language files yet. See [lang/README.md](lang/README.md).
 
+## Themes
+
+Themes made for stock MainUI or the patched MainUI work unchanged. Optional settings, assets, font behaviour and safe margins are described in [docs/THEMES.md](docs/THEMES.md).
+
 ## Building
 
 ```sh

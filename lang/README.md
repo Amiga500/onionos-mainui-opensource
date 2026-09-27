@@ -35,3 +35,5 @@ The 400 range was chosen because the highest ID in any shipped Onion `.lang` fil
 3. Note the new ID in the table above, and add it to the upstream pull request.
 
 Never call `mainui_translate` with an ID that Onion already uses for something else, the string would silently change meaning in every translated language.
+
+Which font draws translated labels, and the fallback font for other languages, is described in [docs/THEMES.md](../docs/THEMES.md#fonts-and-languages).
