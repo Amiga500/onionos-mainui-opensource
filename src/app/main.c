@@ -10,6 +10,18 @@
 #endif
 #include "platform/timing.h"
 #include <stdlib.h>
+#include <unistd.h>
+
+/* The device wrapper creates this marker before exec. Removing it after the
+ * first drawn frame tells the next wrapper start that this one did not fail
+ * during startup. Unset (host, tests): nothing to do. */
+static void clear_start_marker(void)
+{
+    const char *marker = getenv("MAINUI_START_MARKER");
+    if (marker && *marker) {
+        unlink(marker);
+    }
+}
 
 static int run(int argc, char **argv, MainUIApp *ui)
 {
@@ -31,6 +43,7 @@ static int run(int argc, char **argv, MainUIApp *ui)
     mainui_mark(MAINUI_MARK_RESTORE);
     mainui_setup_render(ui);
     mainui_mark(MAINUI_MARK_READY);
+    bool first_frame_done = false;
     while (ui->running) {
         if (!mainui_poll_jobs(ui) || !mainui_reap_jobs(ui)) {
             break;
@@ -44,6 +57,10 @@ static int run(int argc, char **argv, MainUIApp *ui)
             mainui_timing_finish("draw-ms", draw_start);
             if (!drawn) {
                 continue;
+            }
+            if (!first_frame_done) {
+                first_frame_done = true;
+                clear_start_marker();
             }
         }
         SDL_Event event;
