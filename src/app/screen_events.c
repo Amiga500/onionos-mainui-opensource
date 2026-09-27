@@ -704,15 +704,20 @@ bool mainui_screen_home_key(MainUIApp *ui, SDLKey key, int requested_section)
             ui->library = calloc(1, sizeof *ui->library);
             if (!ui->library ||
                 !mainui_library_open(ui->library, ui->sd, section == MAINUI_MENU_RECENTS)) {
-                fprintf(stderr, "Cannot read saved library\n");
+                /* Stay on the main menu: an unreadable list must not quit. */
+                bool recent = section == MAINUI_MENU_RECENTS;
+                fprintf(stderr, "Cannot read saved library (%s)\n",
+                        recent ? "recentlist.json" : "favourite.json");
                 if (ui->library) {
                     mainui_favorite_editor_close(&ui->favorite_editor);
                     mainui_library_close(ui->library);
                 }
                 free(ui->library);
                 ui->library = NULL;
-                ui->status = 4;
-                ui->running = false;
+                snprintf(ui->message_title, sizeof ui->message_title, "%s unavailable",
+                         recent ? "Recents" : "Favorites");
+                snprintf(ui->message_body, sizeof ui->message_body, "Cannot read Roms/%s.",
+                         recent ? "recentlist.json" : "favourite.json");
                 return true;
             }
             ui->selected_at = SDL_GetTicks();

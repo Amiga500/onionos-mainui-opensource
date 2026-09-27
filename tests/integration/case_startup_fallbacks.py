@@ -45,6 +45,19 @@ assert result.returncode == 0, result.stderr
 assert "Emu is a symlink" in result.stderr, result.stderr
 assert "starting with an empty Games list" in result.stderr, result.stderr
 
+# An unreadable favourite.json shows a message instead of quitting.
+favorites = OUT / "favorites-folder"
+(favorites / "Emu").mkdir(parents=True)
+(favorites / "Roms/favourite.json").mkdir(parents=True)
+output = OUT / "favorites-folder.bmp"
+result = subprocess.run(
+    [EXE, "--sd-root", str(favorites), "--theme", str(ONION_THEME), "--fallback",
+     str(ONION_THEME), "--input", "E", "--snapshot", str(output)],
+    cwd=ROOT, capture_output=True, text=True, timeout=30)
+assert result.returncode == 0, result.stderr
+assert output.is_file()
+assert "Cannot read saved library (favourite.json)" in result.stderr, result.stderr
+
 # A theme path in system.json that cannot be represented uses the stock theme.
 long_theme = OUT / "long-theme"
 (long_theme / "Emu").mkdir(parents=True)
