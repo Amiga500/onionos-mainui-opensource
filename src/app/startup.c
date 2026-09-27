@@ -152,19 +152,18 @@ int mainui_setup_session(MainUIApp *ui, int argc, char **argv)
             cJSON *system_settings = text ? cJSON_Parse(text) : NULL;
             const cJSON *active = cJSON_GetObjectItemCaseSensitive(system_settings, "theme");
             const char *value = cJSON_IsString(active) ? active->valuestring : "";
-            bool ok = true;
+            ui->dir = ui->base;
             if (*value && strcmp(value, "./")) {
-                ok = mainui_catalog_path(ui->resolved_theme, ui->sd, ui->sd, value);
-                ui->dir = ui->resolved_theme;
-            }
-            else {
-                ui->dir = ui->base;
+                if (mainui_catalog_path(ui->resolved_theme, ui->sd, ui->sd, value)) {
+                    ui->dir = ui->resolved_theme;
+                }
+                else {
+                    /* Like a missing theme folder: the stock theme still starts. */
+                    fprintf(stderr, "Ignoring unusable theme path in system.json: %.80s\n", value);
+                }
             }
             cJSON_Delete(system_settings);
             free(text);
-            if (!ok) {
-                return 2;
-            }
         }
     }
     if (!ui->base) {

@@ -4,6 +4,7 @@
 An unusable Emu starts with an empty Games list; a missing font exits and
 names the font instead of printing a stale SDL error.
 """
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -43,6 +44,19 @@ result, output = start(linked, ONION_THEME, ONION_THEME, "emu-link")
 assert result.returncode == 0, result.stderr
 assert "Emu is a symlink" in result.stderr, result.stderr
 assert "starting with an empty Games list" in result.stderr, result.stderr
+
+# A theme path in system.json that cannot be represented uses the stock theme.
+long_theme = OUT / "long-theme"
+(long_theme / "Emu").mkdir(parents=True)
+(long_theme / "system.json").write_text(json.dumps({"theme": "x" * 8000}))
+output = OUT / "long-theme.bmp"
+result = subprocess.run(
+    [EXE, "--sd-root", str(long_theme), "--fallback", str(ONION_THEME), "--systems",
+     "--snapshot", str(output)],
+    cwd=ROOT, capture_output=True, text=True, timeout=30)
+assert result.returncode == 0, result.stderr
+assert output.is_file()
+assert "Ignoring unusable theme path" in result.stderr, result.stderr
 
 # No font anywhere: a clean exit that names the font, not an SDL error.
 fontless = OUT / "fontless"
