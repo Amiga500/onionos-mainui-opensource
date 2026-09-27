@@ -29,6 +29,10 @@ A theme can set both game-list options in its top-level `config.json`:
 - **Wide game-icon spacers:** a `skin/icon-game.png` at least 120 px wide and at least three times as wide as it is tall is treated as a deliberate spacer. Its full width is kept and only extra height is cropped; titles start after it, and Favorite markers move to the far right so they do not overlap it. Normal icons are unaffected. Theme resizing tools should use the same rule (`width >= 120 && width >= 3 * height`) and leave such assets unchanged.
 - **Settings icons:** supply `skin/icon-theme.png` for the **Themes** row and `skin/fixit.png` for the **Tweaks** row in Settings.
 
+## List colours
+
+All list rows, including the selected one, use `list.color`. `list.selectedcolor` has no effect on list rows in stock MainUI, with one exception: stock draws the first row of its Wi-Fi screen (the on/off toggle) in that colour. Open MainUI does not read `list.selectedcolor` at all, so its Wi-Fi toggle row uses `list.color` like every other row. Make sure `list.color` is readable on the selection background.
+
 ## Background orientation
 
 `skin/background.png` is stored upside down, as for stock MainUI and Onion's own apps: it is rotated 180 degrees when loaded. Check the result on the device or in a screenshot, not in an image viewer. The other images are used as stored.
