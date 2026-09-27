@@ -266,21 +266,35 @@ typedef struct {
     char label[MAINUI_PATH_MAX];
 } ScanScratch;
 
+/* A single entry that cannot be represented is skipped, never the whole scan:
+ * one bad console, app or file name must not hide everything else. Only
+ * resource failures (allocation, entry limit) still fail the scan. */
+static bool skip_entry(const char *where, const char *name, const char *reason)
+{
+    fprintf(stderr, "Skipping %.200s/%.200s: %s\n", where, name, reason);
+    return true;
+}
+
 static bool visit(MainUICatalogPage *page, const char *sd, const char *name, bool directory,
                   int mode, ScanScratch *scratch)
 {
     if (*name == '.') {
         return true;
     }
+    /* Backslash is a path separator in configs; a name containing one would
+     * resolve elsewhere. FAT forbids it, so this only happens on host disks. */
+    if (strchr(name, '\\')) {
+        return skip_entry(page->path, name, "name contains a backslash");
+    }
     if (!mainui_catalog_path(scratch->path, sd, page->path, name)) {
-        return false;
+        return skip_entry(page->path, name, "path too long");
     }
     if (mode) {
         if (!directory) {
             return true;
         }
         if (!mainui_catalog_path(scratch->config, sd, scratch->path, "config.json")) {
-            return false;
+            return skip_entry(page->path, name, "path too long");
         }
         bool read_failed;
         cJSON *json = read_config(scratch->config, &read_failed);
@@ -296,21 +310,36 @@ static bool visit(MainUICatalogPage *page, const char *sd, const char *name, boo
             cJSON_Delete(json);
             return true;
         }
-        bool ok = mainui_catalog_path(scratch->roms, sd, scratch->path,
-                                      direct ? string(json, "launch", "") : rompath) &&
-                  mainui_catalog_path(scratch->images, sd, scratch->path,
-                                      string(json, "imgpath", "Imgs"));
-        if (ok && !direct && !mainui_path_within(scratch->roms, sd)) {
+        const char *icon = string(json, "icon", "");
+        const char *selected = string(json, "iconsel", icon);
+        /* Validate every configured path before adding the row. */
+        const char *invalid = NULL;
+        if (!mainui_catalog_path(scratch->roms, sd, scratch->path,
+                                 direct ? string(json, "launch", "") : rompath) ||
+            !mainui_catalog_path(scratch->images, sd, scratch->path,
+                                 string(json, "imgpath", "Imgs")) ||
+            !mainui_catalog_path(scratch->launch, sd, scratch->path,
+                                 string(json, "launch", "launch.sh"))) {
+            invalid = "unusable rompath, launch or imgpath";
+        }
+        else if ((*icon && !mainui_catalog_path(scratch->resolved, sd, scratch->path, icon)) ||
+                 (*selected &&
+                  !mainui_catalog_path(scratch->resolved, sd, scratch->path, selected))) {
+            invalid = "unusable icon or iconsel";
+        }
+        else if (strlen(string(json, "extlist", "")) >= sizeof page->extensions) {
+            invalid = "extlist too long";
+        }
+        if (invalid) {
+            cJSON_Delete(json);
+            return skip_entry(page->path, name, invalid);
+        }
+        if (!direct && !mainui_path_within(scratch->roms, sd)) {
             cJSON_Delete(json);
             return true; /* Ignore configs that escape the SD card. */
         }
-        if (ok && strlen(string(json, "extlist", "")) >= sizeof page->extensions) {
-            ok = false;
-        }
-        if (ok) {
-            ok = add(page, string(json, "label", name), scratch->roms, !direct,
-                     string(json, "extlist", ""), scratch->images);
-        }
+        bool ok = add(page, string(json, "label", name), scratch->roms, !direct,
+                      string(json, "extlist", ""), scratch->images);
         if (ok) {
             MainUIEntry *entry = &page->entries[page->count - 1];
             const cJSON *shortname = cJSON_GetObjectItemCaseSensitive(json, "shortname");
@@ -318,15 +347,9 @@ static bool visit(MainUICatalogPage *page, const char *sd, const char *name, boo
             entry->raw_imgpath = duplicate_text(string(json, "imgpath", "Imgs"));
             entry->config = duplicate_text(scratch->config);
             entry->config_stamp = mainui_file_stamp(scratch->config);
-            if (!entry->config || !entry->raw_rompath || !entry->raw_imgpath) {
-                ok = false;
-            }
             entry->shortname = cJSON_IsNumber(shortname) && shortname->valueint != 0;
-            if (mainui_catalog_path(scratch->launch, sd, scratch->path,
-                                    string(json, "launch", "launch.sh"))) {
-                entry->launch = duplicate_text(scratch->launch);
-            }
-            if (!entry->launch) {
+            entry->launch = duplicate_text(scratch->launch);
+            if (!entry->config || !entry->raw_rompath || !entry->raw_imgpath || !entry->launch) {
                 ok = false;
             }
             if (direct) {
@@ -335,8 +358,6 @@ static bool visit(MainUICatalogPage *page, const char *sd, const char *name, boo
                     ok = false;
                 }
             }
-            const char *icon = string(json, "icon", "");
-            const char *selected = string(json, "iconsel", icon);
             if (*icon && mainui_catalog_path(scratch->resolved, sd, scratch->path, icon)) {
                 entry->icon = duplicate_text(scratch->resolved);
             }

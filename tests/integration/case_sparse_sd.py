@@ -166,3 +166,39 @@ refused = run("apps-open", 3)
 assert refused.stdout.strip() == "0" and "symlink" in refused.stderr, refused
 (sd / "App").unlink()
 assert run("apps-open").stdout.strip() == "0"
+
+# One unusable config hides only its own console or app, never the rest.
+bad_sd = Path(tempfile.mkdtemp(prefix="bad-configs-", dir=BUILD))
+good = dict(label="Good", rompath="../../Roms/Good", extlist="nes")
+bad_configs = {
+    "LongExt": dict(good, label="LongExt", extlist="|".join(["nes"] * 400)),
+    "LongIcon": dict(good, label="LongIcon", icon="x" * 5000),
+    "DriveIcon": dict(good, label="DriveIcon", icon="C:icon.png"),
+    "LongImages": dict(good, label="LongImages", imgpath="y" * 5000),
+}
+for name, config in dict(Good=good, **bad_configs).items():
+    (bad_sd / "Emu" / name).mkdir(parents=True)
+    (bad_sd / "Emu" / name / "config.json").write_text(json.dumps(config))
+    (bad_sd / "App" / name).mkdir(parents=True)
+    app = dict(config, launch="launch.sh")
+    app.pop("rompath")
+    (bad_sd / "App" / name / "config.json").write_text(json.dumps(app))
+(bad_sd / "Roms/Good").mkdir(parents=True)
+for mode in ("catalog-open", "apps-open"):
+    result = subprocess.run([str(BUILD / "persistence-probe"), mode, str(bad_sd)],
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, (mode, result.stderr)
+    assert result.stdout.strip() == "1", (mode, result.stdout, result.stderr)
+    for name in bad_configs:
+        if mode == "catalog-open" or name != "LongExt":
+            assert f"/{name}: " in result.stderr, (mode, name, result.stderr)
+
+# A host file name containing a backslash is skipped instead of being resolved
+# as a path (FAT cannot store such names).
+(roms / "odd\\name.nes").write_bytes(b"ROM")
+run("cache")
+with sqlite3.connect(cache) as db:
+    paths = [row[0] for row in db.execute("SELECT path FROM Test_roms")]
+assert any(p.endswith("kept.nes") for p in paths), paths
+assert not [p for p in paths if "odd" in p or "name.nes" in p], paths
+(roms / "odd\\name.nes").unlink()
