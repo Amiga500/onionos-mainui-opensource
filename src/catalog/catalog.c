@@ -541,7 +541,8 @@ bool mainui_catalog_open(MainUICatalog *catalog, const char *sd, bool sensitive)
         return false;
     }
     struct stat info;
-    if (stat(page->path, &info) && errno == ENOENT) {
+    /* lstat: a dangling symlink is not "absent"; the scan rejects links. */
+    if (lstat(page->path, &info) && errno == ENOENT) {
         return true;
     }
     ScanResult result;
@@ -599,7 +600,8 @@ static bool optional_catalog(MainUICatalog *catalog, const char *sd, bool sensit
         return false;
     }
     struct stat info;
-    if (stat(page->path, &info) && errno == ENOENT) {
+    /* lstat: a dangling symlink is not "absent"; the scan rejects links. */
+    if (lstat(page->path, &info) && errno == ENOENT) {
         return true;
     }
     ScanResult result;

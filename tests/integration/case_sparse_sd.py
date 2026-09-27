@@ -160,6 +160,11 @@ refused = run("catalog-open", 3)
 assert refused.stdout.strip() == "0", refused.stdout
 assert "symlink" in refused.stderr, refused.stderr
 (sd / "Emu").unlink()
+# A dangling Emu link is refused the same way, not treated as a missing folder.
+(sd / "Emu").symlink_to(sd / "no-such-folder", target_is_directory=True)
+refused = run("catalog-open", 3)
+assert "symlink" in refused.stderr, refused.stderr
+(sd / "Emu").unlink()
 (sd / "Emu-real").rename(sd / "Emu")
 (sd / "App").symlink_to(outside_emu.resolve(), target_is_directory=True)
 refused = run("apps-open", 3)
