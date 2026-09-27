@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.1 - 2026-09-27
+
+### Fixes
+
+* Theme backgrounds are shown the right way up. Onion stores `skin/background.png` upside down, and stock rotates it on load; 1.0 showed it as stored (#1).
+* An unreadable `Emu` (for example a file instead of a folder) no longer stops the launcher. It starts with an empty Games list and logs the reason (#5).
+* When no theme font can be opened, Onion's built-in font on internal flash is used. If that fails too, the log names the missing font (#5).
+* ROMs larger than 2 GiB (for example multi-disc PBP files) are no longer treated as missing (#2).
+* A failure to save the ROM-list position no longer blocks launching a game (#3).
+* A saved setting, list position, favourite or device request is no longer reported as failed when the file was written but flushing its folder failed. The same applies to rebuilt and removed ROM caches.
+* Returning from a game keeps its list position even if removing the handoff file only partly succeeds.
+* An unusable theme path in `system.json` falls back to the stock theme instead of stopping the launcher.
+* Filesystem directory scans no longer follow symlink entries or other non-regular filesystem objects, and the scanned `Emu`, `App` and `RApp` folders must not be symlinks themselves. FAT cards are unaffected.
+* The log names the failing step when theme audio is unavailable.
+* A console or app whose `config.json` has an unusable value (for example an overlong path or `extlist`) is skipped and logged, instead of hiding the whole Games or Apps list or stopping the launcher.
+* An unreadable `favourite.json` or `recentlist.json` shows a message instead of closing the launcher.
+* A damaged `romwinidx.json` is moved aside to `romwinidx.json.bad` and replaced, so list positions are saved again.
+* On non-FAT disks, file names containing a backslash are skipped rather than read as a path.
+* When a theme font cannot be opened, the fallback font follows the language as in stock: `wqy-microhei.ttc` for non-English languages, Exo 2 for English. When a theme relies on that fallback, changing between English and another language restarts MainUI and returns to Settings, so the matching font is used at once.
+* New [docs/THEMES.md](docs/THEMES.md) for theme authors: optional settings and assets, list colours, background orientation, fonts and languages, and safe margins.
+* The language saved in `system.json` is used from startup. In 1.0, labels stayed in English until a language was chosen again in Settings, and after every game.
+* A list row that cannot be read while a background task is running no longer closes the launcher; the list reloads when the task ends.
+* Test wrapper: logging problems no longer prevent startup, and stock is only run when its backup is executable.
+
 ## 1.0 - 2026-09-26
 
 Initial open-source release of an independent MainUI implementation for Onion on the Miyoo Mini, Mini Plus and Mini Flip.
