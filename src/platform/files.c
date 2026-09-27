@@ -96,15 +96,15 @@ bool mainui_temporary_path(char out[4096], const char *target, const char *tag)
     return false;
 }
 
-static bool publish_bytes(const char *path, const void *data, size_t size, bool replace,
-                          bool *published)
+static MainUIWriteResult publish_bytes(const char *path, const void *data, size_t size,
+                                       bool replace, bool *published)
 {
     if (published) {
         *published = false;
     }
     char temporary[4096];
     if (!data || size > 16u * 1024u * 1024u || !mainui_temporary_path(temporary, path, "writing")) {
-        return false;
+        return MAINUI_WRITE_UNCHANGED;
     }
     /* Exclusive reservation avoids truncating a concurrent writer's temporary. */
     bool ok = false, owned = false;
@@ -133,36 +133,50 @@ static bool publish_bytes(const char *path, const void *data, size_t size, bool 
             }
         }
     }
-    if (ok) {
-        FAULT("published");
+    if (!ok) {
+        if (owned) {
+            mainui_remove_file(temporary);
+        }
+        return MAINUI_WRITE_UNCHANGED;
     }
-    if (ok) {
-        ok = mainui_sync_parent(path);
+    FAULT("published");
+    /* The new file is visible from here on; only its durability is in doubt. */
+    return mainui_sync_parent(path) ? MAINUI_WRITE_DURABLE : MAINUI_WRITE_NOT_DURABLE;
+}
+
+/* Visible but possibly not durable still counts as saved: the old contents are
+ * gone, so reporting failure would misdescribe the file. Log the difference. */
+static bool published_result(const char *path, MainUIWriteResult result)
+{
+    if (result == MAINUI_WRITE_NOT_DURABLE) {
+        fprintf(stderr, "Saved %s, but flushing its folder failed: %s\n", path, strerror(errno));
     }
-    if (!ok && owned) {
-        mainui_remove_file(temporary);
-    }
-    return ok;
+    return result != MAINUI_WRITE_UNCHANGED;
+}
+
+MainUIWriteResult mainui_write_text_atomic_result(const char *path, const char *text)
+{
+    return text ? publish_bytes(path, text, strlen(text), true, NULL) : MAINUI_WRITE_UNCHANGED;
 }
 
 bool mainui_write_text_atomic(const char *path, const char *text)
 {
-    return text && publish_bytes(path, text, strlen(text), true, NULL);
+    return published_result(path, mainui_write_text_atomic_result(path, text));
 }
 
 bool mainui_write_bytes_new(const char *path, const void *data, size_t size)
 {
-    return publish_bytes(path, data, size, false, NULL);
+    return published_result(path, publish_bytes(path, data, size, false, NULL));
 }
 
 bool mainui_write_bytes_new_status(const char *path, const void *data, size_t size, bool *published)
 {
-    return publish_bytes(path, data, size, false, published);
+    return publish_bytes(path, data, size, false, published) == MAINUI_WRITE_DURABLE;
 }
 
 bool mainui_write_bytes_new_locked(const char *path, const void *data, size_t size)
 {
-    return absent(path) && publish_bytes(path, data, size, true, NULL);
+    return absent(path) && publish_bytes(path, data, size, true, NULL) == MAINUI_WRITE_DURABLE;
 }
 
 bool mainui_move_file_new_locked(const char *source, const char *destination)

@@ -61,6 +61,10 @@ int main(int argc, char **argv)
         mainui_file_unlock(lock);
         return ok ? 0 : 3;
     }
+    if (!strcmp(mode, "new")) {
+        snprintf(path, sizeof path, "%s/new.txt", root);
+        return mainui_write_bytes_new(path, key, strlen(key)) ? 0 : 3;
+    }
     if (!strcmp(mode, "atomic")) {
         snprintf(path, sizeof path, "%s/atomic.json", root);
         return mainui_write_text_atomic(path, key) ? 0 : 3;

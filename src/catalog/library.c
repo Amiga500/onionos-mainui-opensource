@@ -299,8 +299,13 @@ bool mainui_library_restore_recent(const char *sd)
     if (!lock) {
         return false;
     }
-    bool ok = mainui_file_stamp(normal).exists ||
-              (rename(hidden, normal) == 0 && mainui_sync_parent(normal));
+    bool present = mainui_file_stamp(normal).exists;
+    bool ok = present || rename(hidden, normal) == 0;
+    if (ok && !present && !mainui_sync_parent(normal)) {
+        /* Renamed either way; only the flush is in doubt. */
+        fprintf(stderr, "Restored %s, but flushing its folder failed: %s\n", normal,
+                strerror(errno));
+    }
     mainui_file_unlock(lock);
     return ok;
 }

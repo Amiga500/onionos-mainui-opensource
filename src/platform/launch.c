@@ -2,6 +2,7 @@
 #include "platform/launch.h"
 #include "platform/files.h"
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -237,7 +238,9 @@ static bool publish_unlocked(const char *directory, const cJSON *record, const M
         }
     }
     if (ok) {
-        ok = mainui_write_text_atomic(scratch->state_path, state_text);
+        /* The handoff is all-or-nothing with rollback, so it requires durability. */
+        ok = mainui_write_text_atomic_result(scratch->state_path, state_text) ==
+             MAINUI_WRITE_DURABLE;
     }
     bool command_owned = false;
     if (ok) {
@@ -248,7 +251,8 @@ static bool publish_unlocked(const char *directory, const cJSON *record, const M
         cJSON *commit = cJSON_GetObjectItemCaseSensitive(envelope, "committed");
         cJSON_SetBoolValue(commit, true);
         char *ready = cJSON_PrintUnformatted(envelope);
-        ok = ready && mainui_write_text_atomic(scratch->return_path, ready);
+        ok = ready &&
+             mainui_write_text_atomic_result(scratch->return_path, ready) == MAINUI_WRITE_DURABLE;
         free(ready);
     }
     if (!ok) {
@@ -303,9 +307,14 @@ static cJSON *take_return_unlocked(const char *directory)
     }
     cJSON *root = cJSON_ParseWithOpts(text, NULL, true);
     free(text);
-    if (mainui_remove_file(path)) {
-        cJSON_Delete(root);
-        return NULL;
+    bool removed = false;
+    if (mainui_remove_file_status(path, &removed) != 0) {
+        if (!removed) {
+            cJSON_Delete(root);
+            return NULL;
+        }
+        /* Consumed: the file is gone, so the parsed state is the only copy. */
+        fprintf(stderr, "Took %s, but flushing its folder failed: %s\n", path, strerror(errno));
     }
     if (join(path, directory, "mainui-favourite-folder-return")) {
         mainui_remove_file(path);

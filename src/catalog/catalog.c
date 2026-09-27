@@ -771,7 +771,9 @@ static bool cleanup_cache_builds(const char *root, const char *file, MainUICance
         ok = false;
     }
     if (removed && !mainui_sync_parent(file)) {
-        ok = false;
+        /* The stale files are gone either way; only the flush is in doubt. */
+        fprintf(stderr, "Removed stale build files for %s, but flushing the folder failed: %s\n",
+                file, strerror(errno));
     }
     return ok;
 }
@@ -919,7 +921,13 @@ static bool build_cache_locked(MainUICatalog *catalog, int system, bool replace)
     ok = ok && !mainui_cancelled(catalog->cancel) &&
          mainui_file_stamp_equal(previous, mainui_file_stamp(file));
     if (ok) {
-        ok = rename(temporary, file) == 0 && mainui_sync_parent(file);
+        ok = rename(temporary, file) == 0;
+        /* Installed from here on: a failed folder flush must not report the
+         * previous database as retained. */
+        if (ok && !mainui_sync_parent(file)) {
+            fprintf(stderr, "Published %s, but flushing its folder failed: %s\n", file,
+                    strerror(errno));
+        }
     }
     if (!ok) {
         mainui_remove_file(temporary);

@@ -8,7 +8,7 @@ import subprocess
 import sqlite3
 import tempfile
 import time
-from env import BUILD  # noqa: E402
+from env import BUILD, unlink_if_exists  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +35,14 @@ if "no-hardlinks" not in os.environ.get("LD_PRELOAD", "") and not os.environ.get
         assert run("launch").returncode == 0
         for name in handoff:
             (SD / name).unlink()
+    # A return file that is removed but whose folder flush fails is still
+    # consumed: the parsed state is the only copy left.
+    assert run("launch").returncode == 0
+    (SD / "cmd_to_run.sh").unlink()
+    assert run("take", sync_failure="mainui-return.json").stdout.strip() == "returned"
+    assert not (SD / "mainui-return.json").exists()
+    for name in handoff:
+        unlink_if_exists(SD / name)
     (SD / "cmd_to_run.sh").write_text("foreign command")
     assert run("launch").returncode == 3
     assert (SD / "cmd_to_run.sh").read_text() == "foreign command"
@@ -132,7 +140,6 @@ unicode_rom.write_bytes(b"Unicode ROM")
 assert run("cache").returncode == 0
 assert run("delete").returncode == 0
 assert not unicode_rom.exists()
-print("Persistence interruption/concurrent-writer fixtures passed:", SD)
 
 # Over-limit lists can be reduced without discarding the remaining records.
 over_limit = [dict(label="value", rompath="/mnt/SDCARD/Roms/Test/value.nes")]
@@ -142,3 +149,23 @@ favorite_file = SD / "Roms/favourite.json"
 favorite_file.write_text("".join(json.dumps(record) + "\n" for record in over_limit))
 assert run("favorite-remove-once").returncode == 0
 assert len(favorite_file.read_text().splitlines()) == 10000
+
+# Publish-then-flush: once the new file is visible, a failed folder flush is not
+# reported as "unchanged".
+atomic.write_text('{"old":true}')
+assert run("atomic", '{"flush":false}', sync_failure="atomic.json").returncode == 0
+assert json.loads(atomic.read_text()) == {"flush": False}
+if "no-hardlinks" not in os.environ.get("LD_PRELOAD", "") and not os.environ.get("MAINUI_FAT_ROOT"):
+    # Exclusive publication uses link(); its request files live in /tmp.
+    unlink_if_exists(SD / "new.txt")
+    assert run("new", "request", sync_failure="new.txt").returncode == 0
+    assert (SD / "new.txt").read_text() == "request"
+before = cache.read_bytes()
+(SD / "Roms/Test/flush.nes").write_bytes(b"")
+result = run("cache", sync_failure="Test_cache6.db")
+assert result.returncode == 0, result.stderr
+assert "flushing its folder failed" in result.stderr, result.stderr
+with sqlite3.connect(cache) as database:
+    names = [row[0] for row in database.execute("SELECT path FROM Test_roms")]
+assert any(name.endswith("flush.nes") for name in names), names
+print("Persistence interruption/concurrent-writer fixtures passed:", SD)
