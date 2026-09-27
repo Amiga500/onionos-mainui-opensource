@@ -30,11 +30,27 @@ static bool location(const MainUICatalog *catalog, char out[4096], bool create)
     return n > 0 && n < 4096;
 }
 
-static cJSON *read_positions(const char *file)
+/* repair (save path, under the file lock): a file that was read completely but
+ * is not a valid position list is moved aside to <file>.bad and replaced, so
+ * one damaged file does not stop positions being saved forever. A file that
+ * cannot be read at all (I/O error) is still never replaced. */
+static cJSON *read_positions(const char *file, bool repair)
 {
     char *text = mainui_read_text(file, 4 * 1024 * 1024);
     cJSON *root = text ? cJSON_ParseWithOpts(text, NULL, true) : NULL;
+    bool readable = text != NULL;
     free(text);
+    if (repair && readable &&
+        (!cJSON_IsObject(root) || !cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(root, "list")))) {
+        char aside[4096];
+        int n = snprintf(aside, sizeof aside, "%s.bad", file);
+        if (n > 0 && n < (int)sizeof aside && rename(file, aside) == 0) {
+            fprintf(stderr, "Invalid %s moved to %s\n", file, aside);
+            mainui_sync_parent(file);
+            cJSON_Delete(root);
+            root = NULL;
+        }
+    }
     if (!root && !mainui_file_stamp(file).exists) {
         root = cJSON_CreateObject();
         if (root && !cJSON_AddArrayToObject(root, "list")) {
@@ -94,7 +110,7 @@ void mainui_positions_restore(const MainUICatalog *catalog, MainUIViewport *view
     if (!catalog->depth || search_results(catalog) || !location(catalog, file, false)) {
         return;
     }
-    cJSON *root = read_positions(file);
+    cJSON *root = read_positions(file, false);
     cJSON *item = find_position(root, catalog, catalog->pages[catalog->depth].path);
     int pos, start, end;
     if (number(item, "pos", &pos) && number(item, "start", &start) && number(item, "end", &end)) {
@@ -150,7 +166,7 @@ bool mainui_positions_save(const MainUICatalog *catalog, const MainUIViewport *v
         return false;
     }
     MainUIFileLock *lock = mainui_file_lock(file);
-    cJSON *root = lock ? read_positions(file) : NULL;
+    cJSON *root = lock ? read_positions(file, true) : NULL;
     bool ok = root != NULL;
     cJSON *list = cJSON_GetObjectItemCaseSensitive(root, "list");
     for (int i = 1; ok && i <= catalog->depth; ++i) {

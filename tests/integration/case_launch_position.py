@@ -65,4 +65,15 @@ assert "Two.nes" in command, command
 # Folder entry logs the same failure; this message is specific to the launch.
 assert "launching anyway" in stderr, stderr
 assert (SD / "appconfigs").read_text() == "not a directory"
+
+# A damaged position file is moved aside once and replaced, so positions are
+# saved again; its contents are kept for inspection.
+(SD / "appconfigs").unlink()
+write(SD / "appconfigs/romwinidx.json", "{broken")
+command, stderr = launch("damaged")
+assert "Two.nes" in command, command
+assert "launching anyway" not in stderr, stderr
+assert (SD / "appconfigs/romwinidx.json.bad").read_text() == "{broken"
+saved = json.loads((SD / "appconfigs/romwinidx.json").read_text())
+assert isinstance(saved.get("list"), list) and saved["list"], saved
 print("launch_position: ok")
