@@ -411,9 +411,10 @@ bool mainui_session_launch(const char *directory, const MainUILaunchSource *sour
         }
     }
     if (ok && source->catalog && !source->library && !source->home_only) {
-        ok = mainui_positions_save(source->catalog, source->view);
-        if (!ok) {
-            snprintf(error, 256, "Could not save ROM-list position.");
+        /* Best effort, like Recent below: a full or read-only card must not
+         * block the launch, whose handoff files live in /tmp. */
+        if (!mainui_positions_save(source->catalog, source->view)) {
+            fprintf(stderr, "Could not save ROM-list position; launching anyway.\n");
         }
     }
     ok = ok && mainui_launch_publish(directory, record, &legacy, resume, error);
