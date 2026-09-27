@@ -1070,8 +1070,16 @@ bool mainui_catalog_remove_cache(MainUICatalog *catalog, int system)
         char target[4096];
         n = snprintf(target, sizeof target, "%s%s", file, suffixes[i]);
         ok = n > 0 && n < (int)sizeof target;
-        if (ok && mainui_remove_file(target) != 0 && errno != ENOENT) {
-            ok = false;
+        bool removed = false;
+        if (ok && mainui_remove_file_status(target, &removed) != 0) {
+            if (removed) {
+                /* Gone either way; only the folder flush is in doubt. */
+                fprintf(stderr, "Removed %s, but flushing its folder failed: %s\n", target,
+                        strerror(errno));
+            }
+            else if (errno != ENOENT) {
+                ok = false;
+            }
         }
     }
     mainui_file_unlock(lock);

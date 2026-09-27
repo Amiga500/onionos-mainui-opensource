@@ -168,4 +168,9 @@ assert "flushing its folder failed" in result.stderr, result.stderr
 with sqlite3.connect(cache) as database:
     names = [row[0] for row in database.execute("SELECT path FROM Test_roms")]
 assert any(name.endswith("flush.nes") for name in names), names
+# Removing a cache whose folder flush fails still reports the removal.
+result = run("remove-cache", sync_failure="Test_cache6.db")
+assert result.returncode == 0, result.stderr
+assert not cache.exists()
+assert run("cache").returncode == 0
 print("Persistence interruption/concurrent-writer fixtures passed:", SD)
