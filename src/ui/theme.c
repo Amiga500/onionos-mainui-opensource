@@ -435,6 +435,17 @@ static TTF_Font *bounded_font(const char *path, int size)
 #define LANGUAGE_FONT "wqy-microhei.ttc"
 #define ASCII_FONT "Exo-2-Bold-Italic.ttf"
 
+/* Append ", <path>" to the error, keeping the end of a long path: the file
+ * name is the useful part, and a long card or build path must not hide it. */
+static void append_tried(MainUITheme *theme, const char *separator, const char *path)
+{
+    size_t used = strlen(theme->error);
+    size_t length = strlen(path);
+    const char *shown = length > 100 ? path + length - 97 : path;
+    snprintf(theme->error + used, sizeof theme->error - used, "%s%s%s", separator,
+             length > 100 ? "..." : "", shown);
+}
+
 static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
 {
     char path[4096];
@@ -444,8 +455,9 @@ static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
     TTF_Font *font = requested ? bounded_font(path, size) : NULL;
     bool requested_ok = font != NULL;
     if (!font && report) {
-        snprintf(theme->error, sizeof theme->error, "Cannot open font %.60s (tried %.100s",
-                 name ? name : "(default)", requested ? path : "-");
+        snprintf(theme->error, sizeof theme->error, "Cannot open font %.60s (tried",
+                 name ? name : "(default)");
+        append_tried(theme, " ", requested ? path : "-");
     }
     const char *order[2] = {ASCII_FONT, NULL};
     if (theme->language_font) {
@@ -456,8 +468,7 @@ static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
         if (join(path, theme->fallback, order[i])) {
             font = bounded_font(path, size);
             if (!font && report) {
-                size_t used = strlen(theme->error);
-                snprintf(theme->error + used, sizeof theme->error - used, ", %.100s", path);
+                append_tried(theme, ", ", path);
             }
         }
     }
@@ -466,8 +477,7 @@ static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
         if (join(path, "/customer/app", order[i])) {
             font = bounded_font(path, size);
             if (!font && report) {
-                size_t used = strlen(theme->error);
-                snprintf(theme->error + used, sizeof theme->error - used, ", %.60s", path);
+                append_tried(theme, ", ", path);
             }
         }
     }
