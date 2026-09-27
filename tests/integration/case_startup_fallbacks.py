@@ -71,6 +71,25 @@ assert result.returncode == 0, result.stderr
 assert output.is_file()
 assert "Ignoring unusable theme path" in result.stderr, result.stderr
 
+# Fallback font by language, as in stock: wqy-microhei.ttc for a non-English
+# language, Exo 2 for English. With only WenQuanYi available, a missing theme
+# font still starts in Chinese but not in English.
+cjk = OUT / "cjk-only"
+shutil.copytree(ONION_THEME / "skin", cjk / "skin")
+config = json.loads((ONION_THEME / "config.json").read_text())
+for section in config.values():
+    if isinstance(section, dict) and "font" in section:
+        section["font"] = "missing.ttf"
+(cjk / "config.json").write_text(json.dumps(config))
+shutil.copy(ONION_THEME / "wqy-microhei.ttc", cjk / "wqy-microhei.ttc")
+language_sd = OUT / "language-sd"
+(language_sd / "Emu").mkdir(parents=True)
+for language, code in (("ch.lang", 0), ("en.lang", 3)):
+    (language_sd / "system.json").write_text(json.dumps({"language": language}))
+    result, output = start(language_sd, cjk, cjk, "cjk-" + language)
+    assert result.returncode == code, (language, result.returncode, result.stderr)
+assert "Exo-2-Bold-Italic.ttf" in result.stderr, result.stderr
+
 # No font anywhere: a clean exit that names the font, not an SDL error.
 fontless = OUT / "fontless"
 shutil.copytree(ONION_THEME / "skin", fontless / "skin")

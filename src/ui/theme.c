@@ -3,6 +3,7 @@
  */
 #include "ui/theme.h"
 #include "cJSON.h"
+#include "platform/system_config.h"
 #include "ui/artwork.h"
 #include "ui/drawing.h"
 #include <stdint.h>
@@ -427,9 +428,12 @@ static TTF_Font *bounded_font(const char *path, int size)
                : NULL;
 }
 
-/* Onion's own last-resort font (src/common/theme/load.h FALLBACK_FONT). It is
- * on internal flash, so it survives a damaged or incomplete SD card. */
-#define INTERNAL_FALLBACK_FONT "/customer/app/Exo-2-Bold-Italic.ttf"
+/* Built-in fallbacks, as stock MainUI chooses them: for a non-English
+ * language the multilingual WenQuanYi font comes first, otherwise Exo 2. The
+ * /customer/app copies (Onion's FALLBACK_FONT) are on internal flash, so they
+ * survive a damaged or incomplete SD card. */
+#define LANGUAGE_FONT "wqy-microhei.ttc"
+#define ASCII_FONT "Exo-2-Bold-Italic.ttf"
 
 static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
 {
@@ -442,19 +446,28 @@ static TTF_Font *font_open(MainUITheme *theme, const char *name, int size)
         snprintf(theme->error, sizeof theme->error, "Cannot open font %.60s (tried %.100s",
                  name ? name : "(default)", requested ? path : "-");
     }
-    if (!font && join(path, theme->fallback, "Exo-2-Bold-Italic.ttf")) {
-        font = bounded_font(path, size);
-        if (!font && report) {
-            size_t used = strlen(theme->error);
-            snprintf(theme->error + used, sizeof theme->error - used, ", %.100s", path);
+    const char *order[2] = {ASCII_FONT, NULL};
+    if (theme->language_font) {
+        order[0] = LANGUAGE_FONT;
+        order[1] = ASCII_FONT;
+    }
+    for (int i = 0; !font && i < 2 && order[i]; i++) {
+        if (join(path, theme->fallback, order[i])) {
+            font = bounded_font(path, size);
+            if (!font && report) {
+                size_t used = strlen(theme->error);
+                snprintf(theme->error + used, sizeof theme->error - used, ", %.100s", path);
+            }
         }
     }
 #ifdef MAINUI_ONION
-    if (!font) {
-        font = bounded_font(INTERNAL_FALLBACK_FONT, size);
-        if (!font && report) {
-            size_t used = strlen(theme->error);
-            snprintf(theme->error + used, sizeof theme->error - used, ", " INTERNAL_FALLBACK_FONT);
+    for (int i = 0; !font && i < 2 && order[i]; i++) {
+        if (join(path, "/customer/app", order[i])) {
+            font = bounded_font(path, size);
+            if (!font && report) {
+                size_t used = strlen(theme->error);
+                snprintf(theme->error + used, sizeof theme->error - used, ", %.60s", path);
+            }
         }
     }
 #endif
@@ -512,6 +525,12 @@ bool mainui_theme_open_sd(MainUITheme *t, const char *dir, const char *base, con
             return false;
         }
         strcpy(t->sd, sd);
+        /* Stock compares the first 7 bytes of the language with "en.lang". */
+        cJSON *system = mainui_system_read(sd);
+        const cJSON *language = cJSON_GetObjectItemCaseSensitive(system, "language");
+        t->language_font =
+            cJSON_IsString(language) && strncmp(language->valuestring, "en.lang", 7) != 0;
+        cJSON_Delete(system);
     }
     char path[4096];
     char *text = join(path, dir, "config.json") ? mainui_read_text(path, 1024 * 1024) : NULL;
