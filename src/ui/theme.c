@@ -4,6 +4,7 @@
 #include "ui/theme.h"
 #include "cJSON.h"
 #include "ui/artwork.h"
+#include "ui/drawing.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -610,7 +611,12 @@ bool mainui_theme_open_sd(MainUITheme *t, const char *dir, const char *base, con
     t->buttons[0] = mainui_theme_image(t, "skin/icon-A-54.png");
     t->buttons[1] = mainui_theme_image(t, "skin/icon-B-54.png");
     t->empty = mainui_theme_image(t, "skin/Empty.png");
+    /* Theme backgrounds are stored upside down: stock MainUI and Onion
+     * (src/common/theme/background.h) rotate them 180 degrees on load. */
     t->background = mainui_theme_image(t, "skin/background.png");
+    if (t->background) {
+        mainui_rotate_frame(t->background);
+    }
     const char *battery_names[] = {"skin/power-0%-icon.png",   "skin/power-20%-icon.png",
                                    "skin/power-50%-icon.png",  "skin/power-80%-icon.png",
                                    "skin/power-full-icon.png", "skin/ic-power-charge-100%.png"};
