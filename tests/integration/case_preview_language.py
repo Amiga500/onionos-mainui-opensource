@@ -25,6 +25,9 @@ CONFIG.write_text('{"menu":{"games":true,"apps":true,"settings":true},"settings"
 (SD/'miyoo/app/lang/en.lang').write_text('\ufeff'+json.dumps({'lang':'Custom test','15':'Custom settings','23':'Custom language','407':'Custom tweaks'}),encoding='utf-8')
 (SD/'miyoo/app/lang/bad.lang').write_text('{broken')
 subprocess.run([str(BUILD / "fixture-language"),str(SD),str(OUT/'missing-fallback')],check=True,cwd=ROOT)
+# The saved language is loaded at startup; start in German (from the Onion
+# fallback) so choosing the custom en.lang in Settings visibly changes labels.
+(SD/'system.json').write_text('{"language":"de.lang","preserve":123}')
 def capture(name,actions,system=False):
     target=OUT/(name+'.bmp')
     args=[os.environ.get('MAINUI_TEST_EXE',str(BUILD / "MainUI-dev")),'--sd-root',str(SD),'--theme',str(THEME),'--input',actions,'--snapshot',str(target)]
@@ -40,7 +43,8 @@ assert folder.tobytes()==restored.tobytes()
 assert missing.getpixel((500,200)) != (255,0,0)
 # Language discovery/selection is reached only after A on the Settings language row.
 stock=capture('settings','RRE')
-changed=capture('custom-language','RREEE')
+# In the name-sorted list, "Custom test" (en.lang) sits directly above "Deutsch".
+changed=capture('custom-language','RREEUE')
 assert stock.tobytes()!=changed.tobytes()
 saved=json.loads((SD/'system.json').read_text())
 assert saved['language']=='en.lang' and saved['preserve']==123

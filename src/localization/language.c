@@ -145,6 +145,35 @@ bool mainui_language_select(const MainUILanguages *list, const char *sd)
     return true;
 }
 
+bool mainui_language_load(const char *sd, const char *fallback)
+{
+    cJSON *system = mainui_system_read(sd);
+    const cJSON *selected = cJSON_GetObjectItemCaseSensitive(system, "language");
+    const char *filename = cJSON_IsString(selected) ? selected->valuestring : "en.lang";
+    size_t length = strlen(filename);
+    cJSON *root = NULL;
+    /* A plain file name only: system.json must not name a path. */
+    if (length > 5 && length < 256 && !strcmp(filename + length - 5, ".lang") &&
+        !strchr(filename, '/') && !strchr(filename, '\\') && strcmp(filename, "..")) {
+        const char *locations[] = {"miyoo/app/lang", "miyoo/app/lang_backup"};
+        char path[4096];
+        for (int i = 0; !root && i < 3; i++) {
+            int n = i < 2 ? snprintf(path, sizeof path, "%s/%s/%s", sd, locations[i], filename)
+                          : snprintf(path, sizeof path, "%s/lang/%s", fallback, filename);
+            if (n > 0 && n < (int)sizeof path) {
+                root = read_language(path);
+            }
+        }
+    }
+    if (!root && strcmp(filename, "en.lang")) {
+        fprintf(stderr, "Language %.80s unavailable; using built-in English\n", filename);
+    }
+    cJSON_Delete(system);
+    cJSON_Delete(active);
+    active = root;
+    return root != NULL;
+}
+
 const char *mainui_translate(int id, const char *fallback)
 {
     char key[24];

@@ -13,10 +13,14 @@ typedef struct {
     int count, selected, start;
 } MainUILanguages;
 
-/* No initialization or startup file reads. Discovery is explicit and on demand. */
+/* Discovery of all languages is explicit and on demand (Settings). */
 bool mainui_languages_open(MainUILanguages *list, const char *sd, const char *fallback);
 void mainui_languages_close(MainUILanguages *list);
 bool mainui_language_select(const MainUILanguages *list, const char *sd);
+/* Load the language saved in system.json at startup: one file read, from
+ * miyoo/app/lang, then lang_backup, then <fallback>/lang. Without it, the
+ * built-in English strings are used. */
+bool mainui_language_load(const char *sd, const char *fallback);
 const char *mainui_translate(int id, const char *fallback);
 void mainui_language_close(void);
 #endif

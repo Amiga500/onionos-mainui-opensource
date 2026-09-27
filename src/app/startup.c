@@ -3,6 +3,7 @@
 #include "app/options.h"
 #include "app/positions.h"
 #include "app/render.h"
+#include "localization/language.h"
 #include "platform/audio.h"
 #include "platform/launch.h"
 #include "platform/system_config.h"
@@ -297,6 +298,9 @@ int mainui_setup_video(MainUIApp *ui)
         mainui_close_list(ui->list);
         free(ui->list);
         return 3;
+    }
+    if (ui->sd) {
+        mainui_language_load(ui->sd, ui->theme.fallback);
     }
     /* Kept deliberately for startup timing diagnostics. */
     fprintf(stderr, "[startup] sdl-init %lld ttf-init %lld set-mode %lld theme %lld\n", t1 - t0,
