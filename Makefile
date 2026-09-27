@@ -29,7 +29,7 @@ VERSION    ?= 1.0
 SDL_CFLAGS ?= $(shell sdl-config --cflags 2>/dev/null)
 SDL_LIBS   ?= $(shell sdl-config --libs 2>/dev/null) -lSDL_image -lSDL_ttf
 
-CPPFLAGS   += -Isrc -Ivendor/cjson -DCJSON_HIDE_SYMBOLS -D_GNU_SOURCE \
+CPPFLAGS   += -Isrc -Ivendor/cjson -DCJSON_HIDE_SYMBOLS -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 \
               -DMAINUI_METADATA_TEST
 # Applied in the compile rules, not in CPPFLAGS: the device build passes
 # CPPFLAGS through a quoted sub-make argument, where nested quotes do not
@@ -151,7 +151,7 @@ ONION_SDL_LIBS   ?= -lSDL -lSDL_image -lSDL_ttf
 ONION_ARCH       := -marm -mtune=cortex-a7 -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard
 # SQLite comes from the Onion runtime instead of vendor/, so the device image
 # stays small. libshmvar provides the bootloader variables that About reads.
-ONION_CPPFLAGS   := -Isrc -Ivendor/cjson -DCJSON_HIDE_SYMBOLS \
+ONION_CPPFLAGS   := -Isrc -Ivendor/cjson -DCJSON_HIDE_SYMBOLS -D_FILE_OFFSET_BITS=64 \
                     -D_GNU_SOURCE -DMAINUI_ONION \
                     -I$(ONION_ROOT)/include -I$(ONION_ROOT)/include/sqlite3
 ONION_OPT        := -O2 -g $(ONION_ARCH) -ffunction-sections -fdata-sections
