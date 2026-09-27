@@ -91,7 +91,11 @@ bool mainui_languages_open(MainUILanguages *list, const char *sd, const char *fa
 {
     mainui_languages_close(list);
     char directory[4096];
-    const char *locations[] = {"miyoo/app/lang_backup", "miyoo/app/lang"};
+    /* Same order as the startup loader. miyoo/app/lang is the folder stock
+     * MainUI reads; when labels are hidden (theme or Tweaks override), Onion
+     * blanks those strings there and keeps the originals in lang_backup for
+     * its own apps. Earlier folders win for duplicate file names. */
+    const char *locations[] = {"miyoo/app/lang", "miyoo/app/lang_backup"};
     for (int i = 0; i < 2; i++) {
         int n = snprintf(directory, sizeof directory, "%s/%s", sd, locations[i]);
         if (n > 0 && n < (int)sizeof directory) {

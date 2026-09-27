@@ -39,6 +39,30 @@ for bad in ("../../evil.lang", "missing.lang", "notalang.txt"):
     assert title == english, bad
     assert "using built-in English" in stderr, (bad, stderr)
 
+# The same file name in miyoo/app/lang and lang_backup: startup and a selection
+# in Settings both use miyoo/app/lang, the folder stock reads.
+(SD / "miyoo/app/lang_backup").mkdir()
+(SD / "miyoo/app/lang/dup.lang").write_text(json.dumps({"lang": "Dup", "15": "PPPPPPPPPPPP"}))
+(SD / "miyoo/app/lang_backup/dup.lang").write_text(json.dumps({"lang": "Dup", "15": "BBBBBBBBBBBB"}))
+
+
+def title(language, inputs, name):
+    (SD / "system.json").write_text(json.dumps({"language": language}))
+    output = OUT / (name + ".bmp")
+    result = subprocess.run(
+        [str(BUILD / "MainUI-dev"), "--sd-root", str(SD), "--theme", str(ONION_THEME),
+         "--fallback", str(ONION_THEME), "--input", inputs, "--snapshot", str(output)],
+        cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    return Image.open(output).convert("RGB").crop((0, 0, 640, 60)).tobytes()
+
+
+at_startup = title("dup.lang", "RRRE", "dup-startup")
+# Settings, Change language row, open the list (Dup is selected), choose it again.
+after_select = title("dup.lang", "RRREDDDDEE", "dup-selected")
+assert at_startup == after_select
+assert at_startup != english
+
 # A language change that switches the built-in fallback font (English <-> other)
 # restarts MainUI when the theme relies on that fallback: the handoff resumes
 # Settings, as stock reloads its fonts immediately.
