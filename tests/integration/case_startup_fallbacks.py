@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Startup with a damaged SD card.
 
-A missing font exits and names the font instead of printing a stale SDL error.
+An unusable Emu starts with an empty Games list; a missing font exits and
+names the font instead of printing a stale SDL error.
 """
 from pathlib import Path
 import shutil
@@ -23,6 +24,16 @@ def start(sd, theme, fallback, name):
         cwd=ROOT, capture_output=True, text=True, timeout=30)
     return result, output
 
+
+# Emu is a file: startup continues with an empty Games list and says why.
+bad = OUT / "emu-file"
+bad.mkdir()
+(bad / "Emu").write_text("not a folder")
+result, output = start(bad, ONION_THEME, ONION_THEME, "emu-file")
+assert result.returncode == 0, result.stderr
+assert output.is_file()
+assert "Cannot open systems folder Emu: Not a directory" in result.stderr, result.stderr
+assert "starting with an empty Games list" in result.stderr, result.stderr
 
 # No font anywhere: a clean exit that names the font, not an SDL error.
 fontless = OUT / "fontless"

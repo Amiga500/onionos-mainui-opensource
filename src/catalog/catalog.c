@@ -387,9 +387,26 @@ static int order_case(const void *a, const void *b)
     return order(a, b, true);
 }
 
+/* Why a scan stopped. Only filesystem enumeration failures and the entry limit
+ * are classified; allocation, path and cancel failures stay SCAN_OTHER. */
+typedef enum {
+    SCAN_OTHER,
+    SCAN_OPEN,
+    SCAN_READ,
+    SCAN_STAT,
+    SCAN_LIMIT
+} ScanFailure;
+
+typedef struct {
+    ScanFailure kind;
+    int error;
+    char name[256];
+} ScanResult;
+
 static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bool sensitive,
-                           MainUICancel cancel)
+                           MainUICancel cancel, ScanResult *result)
 {
+    *result = (ScanResult){SCAN_OTHER, 0, ""};
     ScanScratch *scratch = malloc(sizeof *scratch);
     if (!scratch) {
         free(scratch);
@@ -398,6 +415,7 @@ static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bo
     bool ok = true;
     DIR *dir = opendir(page->path);
     if (!dir) {
+        *result = (ScanResult){SCAN_OPEN, errno, ""};
         free(scratch);
         return false;
     }
@@ -407,6 +425,9 @@ static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bo
         entry = readdir(dir);
         if (!entry) {
             ok = errno == 0;
+            if (!ok) {
+                *result = (ScanResult){SCAN_READ, errno, ""};
+            }
             break;
         }
         if (mainui_cancelled(cancel)) {
@@ -421,13 +442,22 @@ static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bo
             /* Unknown types and symlinks still resolve through stat. */
             char path[MAINUI_PATH_MAX];
             struct stat info;
-            if (!mainui_catalog_path(path, sd, page->path, entry->d_name) || stat(path, &info)) {
+            if (!mainui_catalog_path(path, sd, page->path, entry->d_name)) {
+                ok = false;
+                break;
+            }
+            if (stat(path, &info)) {
+                *result = (ScanResult){SCAN_STAT, errno, ""};
+                snprintf(result->name, sizeof result->name, "%s", entry->d_name);
                 ok = false;
                 break;
             }
             directory = S_ISDIR(info.st_mode);
         }
         if (!visit(page, sd, entry->d_name, directory, mode, scratch)) {
+            if (page->count >= MAINUI_SCAN_ENTRY_LIMIT) {
+                result->kind = SCAN_LIMIT;
+            }
             ok = false;
             break;
         }
@@ -442,13 +472,20 @@ static bool scan_directory(MainUICatalogPage *page, const char *sd, int mode, bo
     return ok;
 }
 
+static bool scan_result(MainUICatalogPage *page, const char *sd, int mode, bool sensitive,
+                        MainUICancel cancel, ScanResult *result)
+{
+    struct timespec start = mainui_timing_start();
+    bool ok = scan_directory(page, sd, mode, sensitive, cancel, result);
+    mainui_timing_finish("scan-ms", start);
+    return ok;
+}
+
 static bool scan(MainUICatalogPage *page, const char *sd, int mode, bool sensitive,
                  MainUICancel cancel)
 {
-    struct timespec start = mainui_timing_start();
-    bool ok = scan_directory(page, sd, mode, sensitive, cancel);
-    mainui_timing_finish("scan-ms", start);
-    return ok;
+    ScanResult result;
+    return scan_result(page, sd, mode, sensitive, cancel, &result);
 }
 
 bool mainui_catalog_open(MainUICatalog *catalog, const char *sd, bool sensitive)
@@ -466,9 +503,38 @@ bool mainui_catalog_open(MainUICatalog *catalog, const char *sd, bool sensitive)
     if (stat(page->path, &info) && errno == ENOENT) {
         return true;
     }
-    if (!scan(page, catalog->sd, true, sensitive, catalog->cancel)) {
-        snprintf(catalog->error, sizeof catalog->error,
-                 "Cannot read systems (Emu), or more than %d entries", MAINUI_SCAN_ENTRY_LIMIT);
+    ScanResult result;
+    if (!scan_result(page, catalog->sd, true, sensitive, catalog->cancel, &result)) {
+        switch (result.kind) {
+        case SCAN_OPEN:
+        case SCAN_READ:
+            snprintf(catalog->error, sizeof catalog->error, "Cannot %s systems folder Emu: %s",
+                     result.kind == SCAN_OPEN ? "open" : "read", strerror(result.error));
+            break;
+        case SCAN_STAT:
+            snprintf(catalog->error, sizeof catalog->error, "Cannot stat Emu/%.100s: %s",
+                     result.name, strerror(result.error));
+            break;
+        case SCAN_LIMIT:
+            snprintf(catalog->error, sizeof catalog->error,
+                     "Systems folder Emu has more than %d entries", MAINUI_SCAN_ENTRY_LIMIT);
+            break;
+        default:
+            snprintf(catalog->error, sizeof catalog->error, "Cannot read systems (Emu)");
+            break;
+        }
+        if (result.kind != SCAN_OTHER) {
+            /* Unusable Emu: leave an empty Systems page so startup can continue.
+             * The stamp makes a later change to Emu trigger a normal reload. */
+            catalog->unreadable = true;
+            char title[sizeof page->title], path[sizeof page->path];
+            memcpy(title, page->title, sizeof title);
+            memcpy(path, page->path, sizeof path);
+            close_page(page);
+            memcpy(page->title, title, sizeof title);
+            memcpy(page->path, path, sizeof path);
+            catalog->source_stamp = mainui_file_stamp(page->path);
+        }
         return false;
     }
     catalog->source_stamp = mainui_file_stamp(page->path);

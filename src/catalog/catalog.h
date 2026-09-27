@@ -50,6 +50,10 @@ typedef struct {
     MainUIFileStamp source_stamp;
     char sd[MAINUI_PATH_MAX];
     char error[256];
+    /* Set by mainui_catalog_open() when Emu could not be enumerated (open, read
+     * or stat failure, or the entry limit). The catalog is then a valid empty
+     * Systems page; startup may continue with it. Not set for other failures. */
+    bool unreadable;
 } MainUICatalog;
 
 bool mainui_catalog_changed(MainUICatalog *catalog);

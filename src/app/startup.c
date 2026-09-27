@@ -178,9 +178,15 @@ int mainui_setup_session(MainUIApp *ui, int argc, char **argv)
     }
     ui->list = calloc(1, sizeof *ui->list);
     ui->catalog = ui->sd ? calloc(1, sizeof *ui->catalog) : NULL;
-    if (!ui->list ||
-        (ui->sd &&
-         (!ui->catalog || !mainui_catalog_open(ui->catalog, ui->sd, ui->config.case_sensitive))) ||
+    bool catalog_ok =
+        ui->catalog && mainui_catalog_open(ui->catalog, ui->sd, ui->config.case_sensitive);
+    if (ui->catalog && !catalog_ok && ui->catalog->unreadable) {
+        /* An unusable Emu leaves an empty Games list; Apps, settings and
+         * shutdown still work, which beats a launcher that cannot start. */
+        fprintf(stderr, "%s; starting with an empty Games list\n", ui->catalog->error);
+        catalog_ok = true;
+    }
+    if (!ui->list || (ui->sd && !catalog_ok) ||
         (!ui->sd && !mainui_load_list(ui->list, ui->list_path))) {
         fprintf(stderr, "%s\n",
                 ui->catalog ? ui->catalog->error : "Cannot read list or allocate catalog");
