@@ -277,12 +277,20 @@ bool mainui_draw_frame(MainUIApp *ui)
                                                      .catalog = ui->catalog,
                                                      .view = &ui->view,
                                                      .home = &ui->home_view};
-                        ui->reload_search = false;
-                        if (!mainui_catalog_job_start(&ui->catalog_job, JOB_RELOAD, &source, ui->sd,
-                                                      ui->config.case_sensitive, ui->config.rows,
-                                                      NULL, ++ui->catalog_generation)) {
-                            ui->status = 4;
-                            ui->running = false;
+                        /* A job already running (markers, discovery) keeps its
+                         * slot; the reload is retried on a later frame. Any
+                         * other failure shows a message instead of quitting. */
+                        if (!ui->catalog_job.thread) {
+                            ui->reload_search = false;
+                            if (!mainui_catalog_job_start(&ui->catalog_job, JOB_RELOAD, &source,
+                                                          ui->sd, ui->config.case_sensitive,
+                                                          ui->config.rows, NULL,
+                                                          ++ui->catalog_generation)) {
+                                snprintf(ui->message_title, sizeof ui->message_title,
+                                         "Catalog unavailable");
+                                snprintf(ui->message_body, sizeof ui->message_body, "%.200s",
+                                         ui->catalog->error);
+                            }
                         }
                         break;
                     }
