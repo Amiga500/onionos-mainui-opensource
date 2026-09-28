@@ -62,9 +62,14 @@ cache-build-ms and scan-ms for Refresh roms too; if it takes longer than 60 seco
 let it finish and record the actual session duration.
 
 While a title scrolls, frames are paced on fixed 40 ms deadlines (four 10 ms
-kernel ticks) and the title moves one whole-pixel step per frame, from the
-configured speed rounded to 25 px/s multiples (slower speeds move one pixel every
-few frames). Letter-jump work retains 17 ms wakes. Workers wake the UI
+kernel ticks) and the title moves one whole-pixel step per frame. This departs
+from exact `.romListTitleScroll` speed parity on purpose: the configured speed is
+rounded to a whole number of pixels per 40 ms frame, i.e. to a multiple of
+25 px/s (120 px/s scrolls at 125 px/s). Speeds below 25 px/s move one pixel
+every few frames instead (5 px/s stays exact). An averaging step would keep the
+exact speed but bring back uneven motion. During the scroll delay (up to 30 s)
+the normal maintenance ticks continue; the loop wakes when the title starts to
+move and only then switches to paced frames. Letter-jump work retains 17 ms wakes. Workers wake the UI
 on completion, and catalog work has a wake scheduled for the 500 ms Loading panel
 deadline. Status polling is every second in Settings and every five seconds
 elsewhere, with no periodic supplicant requests when system.json has Wi-Fi off.

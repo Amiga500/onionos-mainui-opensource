@@ -174,7 +174,21 @@ static void wake_intervals(MainUIApp *ui)
     assert(mainui_wait_interval(ui, 1400) == 5000);
     ui->animate = true;
     assert(mainui_wait_interval(ui, 1400) == MAINUI_MARQUEE_FRAME_MS);
+    /* A long title in its scroll delay keeps maintenance ticks, capped to wake
+     * when it starts moving; 30 s is a valid delay (review of v7). */
+    ui->device_enabled = true;
+    ui->selected_at = 1000;
+    ui->config.scroll_delay = 30000;
+    assert(!mainui_marquee_moving(ui, 1400) && mainui_wait_interval(ui, 1400) == 500);
+    assert(mainui_wait_interval(ui, 30800) == 200);
+    assert(!mainui_marquee_moving(ui, 30959) && mainui_marquee_moving(ui, 30960));
+    assert(mainui_wait_interval(ui, 30960) == MAINUI_MARQUEE_FRAME_MS);
+    assert(mainui_wait_interval(ui, 90000) == MAINUI_MARQUEE_FRAME_MS);
+    ui->device_enabled = false;
+    ui->config.scroll_delay = 0;
+    assert(mainui_wait_interval(ui, 1400) == MAINUI_MARQUEE_FRAME_MS);
     ui->letter_jump.active = true;
+    assert(!mainui_marquee_moving(ui, 1400));
     assert(mainui_wait_interval(ui, 1400) == 17);
     ui->letter_jump.active = ui->animate = false;
     ui->catalog_job.started_at = (Uint32)-100;

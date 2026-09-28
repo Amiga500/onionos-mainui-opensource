@@ -332,14 +332,29 @@ bool mainui_reap_jobs(MainUIApp *ui)
     return true;
 }
 
+bool mainui_marquee_moving(const MainUIApp *ui, Uint32 now)
+{
+    Uint32 start = ui->selected_at + (Uint32)ui->config.scroll_delay;
+    return ui->animate && !ui->letter_jump.active &&
+           (Sint32)(now - start) >= -MAINUI_MARQUEE_FRAME_MS;
+}
+
 int mainui_wait_interval(const MainUIApp *ui, Uint32 now)
 {
     /* Workers post completion events; only visible animation needs fast ticks.
      * Keep letter-jump responsive independently of the marquee frame rate. */
-    int interval = ui->letter_jump.active ? 17
-                   : ui->animate          ? MAINUI_MARQUEE_FRAME_MS
-                   : ui->device_enabled   ? 500
-                                          : 5000;
+    int interval = ui->letter_jump.active           ? 17
+                   : mainui_marquee_moving(ui, now) ? MAINUI_MARQUEE_FRAME_MS
+                   : ui->device_enabled             ? 500
+                                                    : 5000;
+    /* A long title still in its scroll delay keeps normal maintenance ticks,
+     * but wakes exactly when it starts to move. */
+    if (ui->animate && !ui->letter_jump.active && interval > MAINUI_MARQUEE_FRAME_MS) {
+        Sint32 until = (Sint32)(ui->selected_at + (Uint32)ui->config.scroll_delay - now);
+        if (until > 0 && until < interval) {
+            interval = (int)until;
+        }
+    }
     if (ui->catalog_job.thread) {
         Uint32 elapsed = now - ui->catalog_job.started_at;
         if (elapsed < 500 && (Uint32)interval > 500 - elapsed) {
@@ -364,13 +379,7 @@ static void paced_wait(MainUIApp *ui, SDL_Event *event)
         ui->marquee_paced = false;
     }
     Uint32 start = ui->selected_at + (Uint32)ui->config.scroll_delay;
-    bool waiting = (Sint32)(start - now) > MAINUI_MARQUEE_FRAME_MS;
-    if (waiting) {
-        /* The title holds still until the scroll delay; nothing to redraw. */
-        ui->marquee_due = start;
-        ui->marquee_paced = false;
-    }
-    else if (!ui->marquee_paced || (Sint32)(now - ui->marquee_due) > MAINUI_MARQUEE_FRAME_MS) {
+    if (!ui->marquee_paced || (Sint32)(now - ui->marquee_due) > MAINUI_MARQUEE_FRAME_MS) {
         ui->marquee_due = now + MAINUI_MARQUEE_FRAME_MS - 5;
         ui->marquee_paced = true;
     }
@@ -380,9 +389,7 @@ static void paced_wait(MainUIApp *ui, SDL_Event *event)
         }
         Sint32 remaining = (Sint32)(ui->marquee_due - SDL_GetTicks());
         if (remaining <= 0) {
-            if (!waiting) {
-                ui->marquee_due += MAINUI_MARQUEE_FRAME_MS;
-            }
+            ui->marquee_due += MAINUI_MARQUEE_FRAME_MS;
             if ((Sint32)(SDL_GetTicks() - start) >= 0) {
                 ui->marquee_steps++;
             }
@@ -401,7 +408,9 @@ static void paced_wait(MainUIApp *ui, SDL_Event *event)
 bool mainui_wait_event(MainUIApp *ui, SDL_Event *event)
 {
     int interval = mainui_wait_interval(ui, SDL_GetTicks());
-    bool paced = !ui->input_script && ui->animate && !ui->letter_jump.active;
+    /* Paced frames only while the title moves; the scroll delay uses the normal
+     * wait, so maintenance keeps running however long the delay is. */
+    bool paced = !ui->input_script && mainui_marquee_moving(ui, SDL_GetTicks());
     if (ui->timer && (paced || ui->timer_interval != interval)) {
         SDL_RemoveTimer(ui->timer);
         ui->timer = NULL;
