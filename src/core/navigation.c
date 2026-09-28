@@ -86,6 +86,24 @@ int mainui_marquee(uint64_t elapsed, int speed, int title, int visible, MainUIBl
     return mainui_marquee_stream(elapsed, speed, title, visible, out);
 }
 
+uint64_t mainui_marquee_pixels(uint64_t moving_ms, int speed)
+{
+    return mainui_marquee_step_pixels(moving_ms / MAINUI_MARQUEE_FRAME_MS, speed);
+}
+
+uint64_t mainui_marquee_step_pixels(uint64_t frames, int speed)
+{
+    if (speed <= 0) {
+        return 0;
+    }
+    /* Thousandths of a pixel per frame; speed is in pixels per second. */
+    uint64_t per_frame = (uint64_t)speed * MAINUI_MARQUEE_FRAME_MS;
+    if (per_frame >= 1000) {
+        return frames * ((per_frame + 500) / 1000);
+    }
+    return frames / ((1000 + per_frame / 2) / per_frame);
+}
+
 int mainui_marquee_stream(uint64_t elapsed, int speed, int title, int visible, MainUIBlit out[2])
 {
     if (speed <= 0 || title <= 0 || visible <= 0 || title > INT_MAX - 60) {

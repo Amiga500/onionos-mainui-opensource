@@ -72,6 +72,24 @@ int mainui_suite_core(void)
                   blits[b].destination_x + blits[b].width <= 250);
         }
     }
+    /* Marquee offsets advance by a constant whole-pixel step per 40 ms frame. */
+    CHECK(mainui_marquee_pixels(0, 40) == 0 && mainui_marquee_pixels(39, 40) == 0);
+    CHECK(mainui_marquee_pixels(40, 40) == 2 && mainui_marquee_pixels(79, 40) == 2);
+    CHECK(mainui_marquee_pixels(1000, 40) == 50);
+    CHECK(mainui_marquee_pixels(1000, 25) == 25 && mainui_marquee_pixels(1000, 400) == 400);
+    /* Slow speeds move one pixel every k frames: 5 px/s is one pixel per 200 ms. */
+    CHECK(mainui_marquee_pixels(199, 5) == 0 && mainui_marquee_pixels(200, 5) == 1);
+    CHECK(mainui_marquee_pixels(1000, 5) == 5 && mainui_marquee_pixels(1000, 0) == 0);
+    for (int speed = 5; speed <= 400; ++speed) {
+        uint64_t step = mainui_marquee_pixels(MAINUI_MARQUEE_FRAME_MS, speed);
+        for (uint64_t frame = 1; frame < 200; ++frame) {
+            uint64_t before = mainui_marquee_pixels((frame - 1) * MAINUI_MARQUEE_FRAME_MS, speed),
+                     now = mainui_marquee_pixels(frame * MAINUI_MARQUEE_FRAME_MS, speed);
+            /* Never backwards, and fast speeds never vary their step. */
+            CHECK(now >= before && (step == 0 || now - before == step));
+        }
+    }
+    CHECK(mainui_marquee_pixels(UINT32_MAX, 400) == (uint64_t)(UINT32_MAX / 40) * 16);
     /* Failed parsing must leave the caller's prior state byte-for-byte intact. */
     MainUIStack state = {.count = 1}, before = state;
     CHECK(!mainui_state_parse("{\"list\":[{\"title\":1}]}", &state));

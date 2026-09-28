@@ -74,6 +74,13 @@ int mainui_marquee(uint64_t elapsed_ms, int speed, int title_width, int visible_
 
 /* Caller has already established overflow against the unobstructed lane. The
  * draw viewport may be wider because preview artwork is composited afterwards. */
+/* Marquee frames are paced on this period: four 10 ms kernel ticks on the device. */
+#define MAINUI_MARQUEE_FRAME_MS 40
+/* Whole-pixel marquee offset after moving_ms of scrolling: a constant step per
+ * frame period (or one pixel every k periods), so the motion stays even. */
+uint64_t mainui_marquee_pixels(uint64_t moving_ms, int speed);
+/* The same offset after a number of marquee frames. */
+uint64_t mainui_marquee_step_pixels(uint64_t frames, int speed);
 int mainui_marquee_stream(uint64_t elapsed_ms, int speed, int title_width, int draw_width,
                           MainUIBlit out[2]);
 

@@ -355,8 +355,14 @@ static void draw_list_row(MainUIApp *ui, int i, Uint32 elapsed)
     if (selected && ui->config.scroll_status == 2 && elapsed >= (unsigned)ui->config.scroll_delay &&
         label->w > activation_width) {
         MainUIBlit segments[2];
-        int n = mainui_marquee_stream(elapsed - (unsigned)ui->config.scroll_delay,
-                                      ui->config.scroll_speed, label->w, available, segments);
+        /* One whole-pixel step per paced frame, so a late frame never jumps twice.
+         * Snapshots render a given instant. 1000 px/s maps pixels to ms exactly. */
+        uint64_t offset =
+            ui->snapshot || ui->marquee_origin != ui->selected_at
+                ? mainui_marquee_pixels(elapsed - (unsigned)ui->config.scroll_delay,
+                                        ui->config.scroll_speed)
+                : mainui_marquee_step_pixels(ui->marquee_steps, ui->config.scroll_speed);
+        int n = mainui_marquee_stream(offset, 1000, label->w, available, segments);
         for (int part = 0; part < n; part++) {
             SDL_Rect source = {(Sint16)segments[part].source_x, 0, (Uint16)segments[part].width,
                                (Uint16)label->h};
@@ -376,6 +382,18 @@ static void draw_list_row(MainUIApp *ui, int i, Uint32 elapsed)
  * logical frame stays upright and complete for later partial frames. */
 static void present(MainUIApp *ui, const SDL_Rect *area)
 {
+    /* Spacing of consecutive animation frames, for the timing report. */
+    static Uint32 previous;
+    Uint32 now = SDL_GetTicks();
+    if (ui->presented_animating && ui->animate) {
+        Uint32 gap = now - previous;
+        mainui_count_add(gap < 35    ? "gap-under35"
+                         : gap <= 45 ? "gap-40"
+                         : gap <= 65 ? "gap-50-60"
+                                     : "gap-over65",
+                         1);
+    }
+    previous = now;
     ui->presented_animating = ui->animate;
     if (ui->real_device) {
         /* Copy inverted pixels directly to the display. */

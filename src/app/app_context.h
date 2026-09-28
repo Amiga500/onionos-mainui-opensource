@@ -113,6 +113,10 @@ typedef struct {
     SDL_TimerID timer;
     /* Idle repaint skipping: what the last presented frame showed, and when. */
     bool idle_tick;
+    /* Marquee pacing: next frame deadline, and frames shown since scrolling began
+     * for the selection made at marquee_origin. */
+    bool marquee_paced;
+    Uint32 marquee_due, marquee_origin, marquee_steps;
     bool presented_animating;
     Uint32 active_at, presented_at;
     int presented_battery, presented_wifi_signal;

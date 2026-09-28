@@ -336,7 +336,10 @@ int mainui_wait_interval(const MainUIApp *ui, Uint32 now)
 {
     /* Workers post completion events; only visible animation needs fast ticks.
      * Keep letter-jump responsive independently of the marquee frame rate. */
-    int interval = ui->letter_jump.active ? 17 : ui->animate ? 33 : ui->device_enabled ? 500 : 5000;
+    int interval = ui->letter_jump.active ? 17
+                   : ui->animate          ? MAINUI_MARQUEE_FRAME_MS
+                   : ui->device_enabled   ? 500
+                                          : 5000;
     if (ui->catalog_job.thread) {
         Uint32 elapsed = now - ui->catalog_job.started_at;
         if (elapsed < 500 && (Uint32)interval > 500 - elapsed) {
@@ -346,14 +349,67 @@ int mainui_wait_interval(const MainUIApp *ui, Uint32 now)
     return interval;
 }
 
+/* SDL 1.2's timer and SDL_WaitEvent both poll on the 10 ms kernel tick, so
+ * marquee frames arrived 20-60 ms apart and the title moved in uneven jumps.
+ * While a title scrolls, sleep to fixed deadlines 40 ms (four ticks) apart.
+ * On the device every wake lands just after a tick, so the first deadline,
+ * 35 ms after a wake, and all later ones sit mid-interval, clear of tick
+ * boundaries: each frame then wakes exactly 40 ms after the previous one. */
+static void paced_wait(MainUIApp *ui, SDL_Event *event)
+{
+    Uint32 now = SDL_GetTicks();
+    if (ui->marquee_origin != ui->selected_at) {
+        ui->marquee_origin = ui->selected_at;
+        ui->marquee_steps = 0;
+        ui->marquee_paced = false;
+    }
+    Uint32 start = ui->selected_at + (Uint32)ui->config.scroll_delay;
+    bool waiting = (Sint32)(start - now) > MAINUI_MARQUEE_FRAME_MS;
+    if (waiting) {
+        /* The title holds still until the scroll delay; nothing to redraw. */
+        ui->marquee_due = start;
+        ui->marquee_paced = false;
+    }
+    else if (!ui->marquee_paced || (Sint32)(now - ui->marquee_due) > MAINUI_MARQUEE_FRAME_MS) {
+        ui->marquee_due = now + MAINUI_MARQUEE_FRAME_MS - 5;
+        ui->marquee_paced = true;
+    }
+    for (;;) {
+        if (SDL_PollEvent(event)) {
+            return;
+        }
+        Sint32 remaining = (Sint32)(ui->marquee_due - SDL_GetTicks());
+        if (remaining <= 0) {
+            if (!waiting) {
+                ui->marquee_due += MAINUI_MARQUEE_FRAME_MS;
+            }
+            if ((Sint32)(SDL_GetTicks() - start) >= 0) {
+                ui->marquee_steps++;
+            }
+            memset(event, 0, sizeof *event);
+            event->type = SDL_USEREVENT;
+            event->user.code = MAINUI_TICK_CODE;
+            return;
+        }
+        /* Input slices end before the deadline even on a coarse kernel tick;
+         * one final sleep then targets the deadline itself. Input latency
+         * stays under 30 ms. */
+        SDL_Delay(remaining > 20 ? 10 : (Uint32)remaining);
+    }
+}
+
 bool mainui_wait_event(MainUIApp *ui, SDL_Event *event)
 {
     int interval = mainui_wait_interval(ui, SDL_GetTicks());
-    if (ui->timer && ui->timer_interval != interval) {
+    bool paced = !ui->input_script && ui->animate && !ui->letter_jump.active;
+    if (ui->timer && (paced || ui->timer_interval != interval)) {
         SDL_RemoveTimer(ui->timer);
         ui->timer = NULL;
     }
-    if (!ui->timer) {
+    if (!paced) {
+        ui->marquee_paced = false;
+    }
+    if (!ui->timer && !paced) {
         ui->timer_interval = interval;
         ui->timer = SDL_AddTimer((Uint32)interval, timer_tick, NULL);
     }
@@ -384,6 +440,9 @@ bool mainui_wait_event(MainUIApp *ui, SDL_Event *event)
             ui->status = 2;
             ui->running = false;
         }
+    }
+    else if (paced) {
+        paced_wait(ui, event);
     }
     else if (!SDL_WaitEvent(event)) {
         ui->status = 4;

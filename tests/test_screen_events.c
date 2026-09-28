@@ -173,7 +173,7 @@ static void wake_intervals(MainUIApp *ui)
     ui->device_enabled = false;
     assert(mainui_wait_interval(ui, 1400) == 5000);
     ui->animate = true;
-    assert(mainui_wait_interval(ui, 1400) == 33);
+    assert(mainui_wait_interval(ui, 1400) == MAINUI_MARQUEE_FRAME_MS);
     ui->letter_jump.active = true;
     assert(mainui_wait_interval(ui, 1400) == 17);
     ui->letter_jump.active = ui->animate = false;

@@ -15,6 +15,7 @@ Marks use CLOCK_MONOTONIC and integer timespec arithmetic. Only the UI thread re
 - peak-rss: the process's peak resident memory; it includes earlier decode spikes.
 - frames: successful UI frame flips.
 - draw-ms: accumulated wall-clock milliseconds around mainui_draw_frame, including drawing, rotation, blitting and SDL_Flip. Uses the existing timing helper, which calls mainui_count_add and skips clock reads when logging is disabled. Each draw duration is truncated to integer milliseconds. For ordinary runs with successful flips, draw-ms / frames gives average measured milliseconds per frame; skip the division when frames is zero. Snapshot saves and failed presentations also contribute draw time but do not increment frames.
+- gap-under35, gap-40, gap-50-60, gap-over65: spacing between consecutive animation frames (marquee and letter jump), in buckets of under 35, 35-45, 46-65 and over 65 ms. A scrolling title should land almost entirely in gap-40; letter jump counts under gap-under35. A few entries at startup or around the scroll delay are normal.
 - roms: games in the most recently entered catalog folder, excluding folders; zero if no ROM folder has been entered. It is not a whole-card count.
 - cache: most recent successful catalog entry: 1 for database, 0 for scan, -1 if no catalog folder has been entered.
 - cache-hits/cache-scans: successful database-backed/scanned folder entries. A rebuilt cache can be a hit; scan-entries reveals the build work.
@@ -58,7 +59,10 @@ session, including navigation, so use the same entry and exit steps. Compare
 cache-build-ms and scan-ms for Refresh roms too; if it takes longer than 60 seconds,
 let it finish and record the actual session duration.
 
-Marquee wakes are 33 ms; letter-jump work retains 17 ms wakes. Workers wake the UI
+While a title scrolls, frames are paced on fixed 40 ms deadlines (four 10 ms
+kernel ticks) and the title moves one whole-pixel step per frame, from the
+configured speed rounded to 25 px/s multiples (slower speeds move one pixel every
+few frames). Letter-jump work retains 17 ms wakes. Workers wake the UI
 on completion, and catalog work has a wake scheduled for the 500 ms Loading panel
 deadline. Status polling is every second in Settings and every five seconds
 elsewhere, with no periodic supplicant requests when system.json has Wi-Fi off.
