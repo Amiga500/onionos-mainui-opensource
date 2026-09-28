@@ -19,6 +19,7 @@ static Uint32 timer_tick(Uint32 interval, void *unused)
     SDL_Event event;
     memset(&event, 0, sizeof event);
     event.type = SDL_USEREVENT;
+    event.user.code = MAINUI_TICK_CODE;
     /* Slow frames must not fill SDL's bounded queue with repaint requests:
      * queued timer events can otherwise crowd out physical button presses. */
     if (SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_EVENTMASK(SDL_USEREVENT)) == 0) {
@@ -103,6 +104,7 @@ bool mainui_poll_jobs(MainUIApp *ui)
                 ui->theme.battery_percent = ui->device_status.battery;
             }
             if (resumed || previous_sleep != ui->device_status.sleeping) {
+                ui->active_at = now;
                 mainui_audio_pause(!resumed && ui->device_status.sleeping == 1);
                 memset(ui->held, 0, sizeof ui->held);
                 SDL_EnableKeyRepeat(0, 0);
@@ -389,6 +391,10 @@ bool mainui_wait_event(MainUIApp *ui, SDL_Event *event)
     }
     if (!scripted_event && (ui->handheld_input || ui->real_device)) {
         mainui_input_device_event(event);
+    }
+    ui->idle_tick = event->type == SDL_USEREVENT && event->user.code == MAINUI_TICK_CODE;
+    if (!ui->idle_tick) {
+        ui->active_at = SDL_GetTicks();
     }
     return true;
 }

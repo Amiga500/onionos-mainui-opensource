@@ -10,4 +10,6 @@ bool mainui_reap_jobs(MainUIApp *ui);
 /* Next maintenance/animation wake, including the delayed Loading panel. */
 int mainui_wait_interval(const MainUIApp *ui, Uint32 now);
 bool mainui_wait_event(MainUIApp *ui, SDL_Event *event);
+/* SDL_USEREVENT code of the periodic tick; workers post code 0. */
+#define MAINUI_TICK_CODE 1
 #endif

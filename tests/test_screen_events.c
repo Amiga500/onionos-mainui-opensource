@@ -182,6 +182,53 @@ static void wake_intervals(MainUIApp *ui)
     reset(ui);
 }
 
+/* Idle ticks skip the repaint only when the presented frame is still exact (#9). */
+static void idle_frame(MainUIApp *ui)
+{
+    reset(ui);
+    ui->idle_tick = true;
+    ui->active_at = 1000;
+    ui->presented_at = 2000;
+    ui->theme.battery_percent = ui->presented_battery = 80;
+    assert(mainui_frame_current(ui, 2500));
+    /* The settle period and the periodic repaint bound what is skipped. */
+    ui->active_at = 2000;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->active_at = 1000;
+    assert(!mainui_frame_current(ui, 7000));
+    /* Every other wake, and anything live on screen, repaints. */
+    ui->idle_tick = false;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->idle_tick = true;
+    ui->presented_animating = true;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->presented_animating = false;
+    ui->preview.pending = true;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->preview.pending = false;
+    ui->catalog_job.thread = (SDL_Thread *)ui;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->catalog_job.thread = NULL;
+    ui->settings_page.open = true;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->settings_page.open = false;
+    ui->confirmation = 0;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->confirmation = -1;
+    /* Header status changes repaint. */
+    ui->theme.battery_percent = 79;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->theme.battery_percent = 80;
+    ui->theme.wifi_online = true;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->theme.wifi_online = false;
+    snprintf(ui->theme.wifi_address, sizeof ui->theme.wifi_address, "10.0.0.2");
+    assert(!mainui_frame_current(ui, 2500));
+    ui->theme.wifi_address[0] = 0;
+    assert(mainui_frame_current(ui, 2500));
+    reset(ui);
+}
+
 static void selection_identity(MainUIApp *ui)
 {
     reset(ui);
@@ -273,6 +320,7 @@ int mainui_suite_screen_events(void)
     settings_windows(ui);
     selection_identity(ui);
     wake_intervals(ui);
+    idle_frame(ui);
     home_and_popups(ui);
     start_is_consumed(ui);
     keyboard_priority(ui);

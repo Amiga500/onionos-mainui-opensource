@@ -111,6 +111,13 @@ typedef struct {
     SDL_Color heading_color;
     SDL_Surface *heading;
     SDL_TimerID timer;
+    /* Idle repaint skipping: what the last presented frame showed, and when. */
+    bool idle_tick;
+    bool presented_animating;
+    Uint32 active_at, presented_at;
+    int presented_battery, presented_wifi_signal;
+    bool presented_wifi_online;
+    char presented_wifi_address[64];
     Uint32 selected_at;
     char selected_identity[MAINUI_PATH_MAX * 3];
     int sound_selection;

@@ -221,6 +221,30 @@ void mainui_prepare_frame(MainUIApp *ui)
          SDL_PeepEvents(&queued_input, 1, SDL_PEEKEVENT, SDL_KEYDOWNMASK | SDL_KEYUPMASK) <= 0);
 }
 
+/* Idle ticks otherwise repaint the whole frame every 500 ms on the device (#9).
+ * Skip only on static browsing screens, with nothing animating or in flight,
+ * after a settle period, and while the header status is unchanged. A periodic
+ * repaint bounds any staleness, e.g. if another process drew on the display. */
+enum {
+    IDLE_SETTLE_MS = 1000,
+    IDLE_REPAINT_MS = 5000
+};
+
+bool mainui_frame_current(const MainUIApp *ui, Uint32 now)
+{
+    return ui->idle_tick && !ui->snapshot && !ui->input_script && !ui->presented_animating &&
+           !ui->letter_jump.active && !ui->catalog_job.thread && !ui->device_job.thread &&
+           !ui->about_job.thread && !ui->preview.thread && !ui->preview.pending &&
+           !ui->settings_open && !ui->settings_page.open && !ui->language_open &&
+           !ui->details.open && !ui->name_input.open && !ui->context_open && ui->confirmation < 0 &&
+           !*ui->message_title && !ui->launch_pending && now - ui->active_at >= IDLE_SETTLE_MS &&
+           now - ui->presented_at < IDLE_REPAINT_MS &&
+           ui->presented_battery == ui->theme.battery_percent &&
+           ui->presented_wifi_online == ui->theme.wifi_online &&
+           ui->presented_wifi_signal == ui->theme.wifi_signal_level &&
+           !strcmp(ui->presented_wifi_address, ui->theme.wifi_address);
+}
+
 bool mainui_draw_frame(MainUIApp *ui)
 {
     if (ui->catalog_job.thread) {
@@ -490,6 +514,13 @@ bool mainui_draw_frame(MainUIApp *ui)
          * remains upright for retained drawing and snapshots. */
         mainui_blit_rotated(ui->screen, ui->display);
     }
+    ui->presented_animating = ui->animate;
+    ui->presented_at = SDL_GetTicks();
+    ui->presented_battery = ui->theme.battery_percent;
+    ui->presented_wifi_online = ui->theme.wifi_online;
+    ui->presented_wifi_signal = ui->theme.wifi_signal_level;
+    snprintf(ui->presented_wifi_address, sizeof ui->presented_wifi_address, "%s",
+             ui->theme.wifi_address);
     if (SDL_Flip(ui->display) == 0) {
         mainui_mark(MAINUI_MARK_FIRST_FRAME);
         mainui_count_add("frames", 1);

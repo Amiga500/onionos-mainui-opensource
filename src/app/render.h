@@ -22,4 +22,7 @@ void mainui_prepare_frame(MainUIApp *ui);
 /* False skips the wait/dispatch phase. Snapshot completion or a fatal render
  * error also clears running; starting a catalog reload leaves it set. */
 bool mainui_draw_frame(MainUIApp *ui);
+/* True when an idle tick would repaint exactly the presented frame, so the
+ * draw, rotation and flip can be skipped. Conservative: see render.c. */
+bool mainui_frame_current(const MainUIApp *ui, Uint32 now);
 #endif

@@ -36,7 +36,7 @@ static int run(int argc, char **argv, MainUIApp *ui)
             break;
         }
         mainui_prepare_frame(ui);
-        if (ui->draw_frame) {
+        if (ui->draw_frame && !mainui_frame_current(ui, SDL_GetTicks())) {
             struct timespec draw_start = mainui_timing_start();
             bool drawn = mainui_draw_frame(ui);
             /* finish accumulates through mainui_count_add, with no clock reads
