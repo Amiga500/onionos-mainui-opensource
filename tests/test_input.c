@@ -5,6 +5,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -57,6 +58,42 @@ static void presentation_case(int depth, int width, int height, int mode)
     SDL_FreeSurface(frame);
 }
 
+/* Rotating one changed row into the previous display image equals rotating the
+ * whole frame: marquee-only frames present just their row. */
+static void partial_presentation(bool alpha)
+{
+    SDL_Surface *frame =
+        SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 480, 32, 0xff0000, 0xff00, 0xff, 0);
+    SDL_Surface *display =
+        SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 480, 32, 0xff0000, 0xff00, 0xff, 0xff000000);
+    SDL_Surface *expected =
+        SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 480, 32, 0xff0000, 0xff00, 0xff, 0xff000000);
+    assert(frame && display && expected);
+    size_t size = (size_t)frame->pitch * frame->h;
+    for (size_t i = 0; i < size; ++i) {
+        ((Uint8 *)frame->pixels)[i] = (Uint8)(i * 37 + i / 11);
+    }
+    if (alpha) {
+        /* Forces the SDL blit fallback, which must honour the clip as well. */
+        SDL_SetAlpha(frame, SDL_SRCALPHA, SDL_ALPHA_OPAQUE);
+    }
+    assert(mainui_blit_rotated(frame, display) == 0);
+    SDL_Rect row = {0, 120, 640, 60};
+    for (int y = row.y; y < row.y + row.h; ++y) {
+        memset((Uint8 *)frame->pixels + y * frame->pitch, y, (size_t)frame->pitch);
+    }
+    SDL_Rect rotated = mainui_rotated_rect(frame, row);
+    assert(rotated.x == 0 && rotated.y == 300 && rotated.w == 640 && rotated.h == 60);
+    SDL_SetClipRect(display, &rotated);
+    assert(mainui_blit_rotated(frame, display) == 0);
+    SDL_SetClipRect(display, NULL);
+    assert(mainui_blit_rotated(frame, expected) == 0);
+    assert(!memcmp(display->pixels, expected->pixels, (size_t)display->pitch * display->h));
+    SDL_FreeSurface(expected);
+    SDL_FreeSurface(display);
+    SDL_FreeSurface(frame);
+}
+
 static void presentation(int depth)
 {
     for (int mode = 0; mode < 6; ++mode) {
@@ -73,6 +110,8 @@ int mainui_suite_input(void)
     presentation(16);
     presentation(24);
     presentation(32);
+    partial_presentation(false);
+    partial_presentation(true);
     /* Odd dimensions and 24-bit row padding catch width/pitch mistakes. */
     SDL_Surface *frame = SDL_CreateRGBSurface(SDL_SWSURFACE, 3, 3, 24, 0xff0000, 0xff00, 0xff, 0);
     assert(frame);

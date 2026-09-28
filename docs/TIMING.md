@@ -62,5 +62,10 @@ Marquee wakes are 33 ms; letter-jump work retains 17 ms wakes. Workers wake the 
 on completion, and catalog work has a wake scheduled for the 500 ms Loading panel
 deadline. Status polling is every second in Settings and every five seconds
 elsewhere, with no periodic supplicant requests when system.json has Wi-Fi off.
-Static menus still repaint on maintenance and other events; this change does not
-add dirty-frame tracking.
+On the home, console, list and apps screens, a maintenance tick that would repaint
+an identical frame is skipped: nothing may be animating or in flight, input must
+have settled for a second, and battery and Wi-Fi must be unchanged. A full repaint
+still happens at least every five seconds. While a title scrolls, those ticks
+recompose and present only the selected row. On the host,
+`MAINUI_VERIFY_PARTIAL=1` checks every such row frame against a full frame and
+aborts on the first differing pixel.

@@ -69,6 +69,14 @@ static inline void mainui_rotate_frame(SDL_Surface *screen)
     }
 }
 
+/* The display area that shows frame area `area` after the 180-degree copy. */
+static inline SDL_Rect mainui_rotated_rect(const SDL_Surface *frame, SDL_Rect area)
+{
+    SDL_Rect rotated = {(Sint16)(frame->w - area.x - area.w), (Sint16)(frame->h - area.y - area.h),
+                        area.w, area.h};
+    return rotated;
+}
+
 /* The device uses matching RGB masks with an opaque frame. Reverse-copy into the
  * display, respecting both pitches and its clip, without modifying the frame.
  * Keep SDL's conversion/blending semantics for other surface configurations. */

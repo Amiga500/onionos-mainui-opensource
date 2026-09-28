@@ -230,14 +230,15 @@ enum {
     IDLE_REPAINT_MS = 5000
 };
 
-bool mainui_frame_current(const MainUIApp *ui, Uint32 now)
+/* Nothing but time has changed since the last presented frame. */
+static bool idle_unchanged(const MainUIApp *ui, Uint32 now)
 {
-    return ui->idle_tick && !ui->snapshot && !ui->input_script && !ui->presented_animating &&
-           !ui->letter_jump.active && !ui->catalog_job.thread && !ui->device_job.thread &&
-           !ui->about_job.thread && !ui->preview.thread && !ui->preview.pending &&
-           !ui->settings_open && !ui->settings_page.open && !ui->language_open &&
-           !ui->details.open && !ui->name_input.open && !ui->context_open && ui->confirmation < 0 &&
-           !*ui->message_title && !ui->launch_pending && now - ui->active_at >= IDLE_SETTLE_MS &&
+    return ui->idle_tick && !ui->snapshot && !ui->input_script && !ui->letter_jump.active &&
+           !ui->catalog_job.thread && !ui->device_job.thread && !ui->about_job.thread &&
+           !ui->preview.thread && !ui->preview.pending && !ui->settings_open &&
+           !ui->settings_page.open && !ui->language_open && !ui->details.open &&
+           !ui->name_input.open && !ui->search_keyboard && !ui->context_open &&
+           ui->confirmation < 0 && !*ui->message_title && !ui->launch_pending &&
            now - ui->presented_at < IDLE_REPAINT_MS &&
            ui->presented_battery == ui->theme.battery_percent &&
            ui->presented_wifi_online == ui->theme.wifi_online &&
@@ -245,7 +246,153 @@ bool mainui_frame_current(const MainUIApp *ui, Uint32 now)
            !strcmp(ui->presented_wifi_address, ui->theme.wifi_address);
 }
 
-bool mainui_draw_frame(MainUIApp *ui)
+bool mainui_frame_current(const MainUIApp *ui, Uint32 now)
+{
+    return idle_unchanged(ui, now) && !ui->presented_animating &&
+           now - ui->active_at >= IDLE_SETTLE_MS;
+}
+
+/* Scrolling titles otherwise repaint, rotate and flip the whole frame at 30 fps. */
+bool mainui_frame_marquee_only(const MainUIApp *ui, Uint32 now)
+{
+    int row = ui->view.selected - ui->view.start;
+    bool list = !ui->home && !ui->apps && (ui->library || ui->list || ui->catalog) &&
+                !(ui->catalog && !ui->library && !ui->catalog->depth);
+    /* Lists with the empty panel over their rows always take the full path. */
+    bool empty = !ui->view.total ||
+                 (ui->catalog && !ui->library && ui->catalog->depth > 1 && ui->view.total == 1) ||
+                 (ui->library && ui->library->current >= 0 && ui->library->visible_count == 1 &&
+                  ui->library->visible[0] == INT_MIN);
+    return idle_unchanged(ui, now) && ui->presented_animating && list && !empty && row >= 0 &&
+           row < ui->config.rows && ui->view.selected < ui->view.total &&
+           ui->config.row_height > 0 && 60 + (row + 1) * ui->config.row_height <= 420;
+}
+
+/* Set only while the host check re-composes a frame for the same instant. */
+static const Uint32 *pinned_elapsed;
+
+static Uint32 list_elapsed(const MainUIApp *ui)
+{
+    return pinned_elapsed ? *pinned_elapsed
+           : ui->snapshot ? ui->snapshot_elapsed
+                          : SDL_GetTicks() - ui->selected_at;
+}
+
+/* One list row, clipped to its own rectangle. Shared by full frames and
+ * marquee-only frames so both compose the row identically. */
+static void draw_list_row(MainUIApp *ui, int i, Uint32 elapsed)
+{
+    int list_origin = 0;
+    int list_width = 640;
+    int outer = ui->config.rows <= 9 ? 20 : (ui->config.rows >= 14 ? 15 : 29 - ui->config.rows);
+    int gap = ui->config.rows <= 7 ? 15 : (ui->config.rows >= 17 ? 5 : 22 - ui->config.rows);
+    int y = 60 + i * ui->config.row_height;
+    SDL_Rect clip = {(Sint16)list_origin, (Sint16)y, (Uint16)list_width,
+                     (Uint16)ui->config.row_height};
+    SDL_SetClipRect(ui->screen, &clip);
+    bool selected = ui->view.start + i == ui->view.selected;
+    if (selected) {
+        if (ui->theme.selection) {
+            blit(ui->theme.selection, ui->screen, list_origin, y);
+        }
+        else {
+            SDL_FillRect(ui->screen, &clip, SDL_MapRGB(ui->screen->format, 68, 68, 68));
+        }
+    }
+    bool folder_row = ui->library
+                          ? mainui_library_is_folder(ui->library, ui->view.start + i)
+                          : ui->catalog && mainui_browser_folder(ui->catalog, ui->view.start + i);
+    SDL_Surface *row_icon = folder_row ? ui->theme.folder : ui->theme.icon;
+    /* Transparent ui->theme spacers still have a meaningful width.
+    * Reserving a synthetic 71px slot indented Silky by 70px. */
+    int icon_width = row_icon ? row_icon->w : 0;
+    int icon_x = list_origin + (ui->theme.icon_margin >= 0 ? ui->theme.icon_margin : 5);
+    int text_x = row_icon ? icon_x + icon_width + gap : list_origin + outer;
+    int available = list_width - outer - text_x;
+    if (ui->favorite_rows[i] && (!ui->library || ui->library->recent || ui->search.results) &&
+        ui->theme.favorite && !folder_row) {
+        bool spacer = ui->theme.icon && ui->theme.icon->w >= 120 &&
+                      ui->theme.icon->w >= 3 * ui->theme.icon->h;
+        int origin =
+            spacer || (ui->config.dynamic_favorite_position && !ui->preview.image) ? 0 : 250;
+        int marker_x = 640 - ui->theme.favorite->w - origin - 20;
+        blit(ui->theme.favorite, ui->screen, marker_x,
+             y + (ui->config.row_height - ui->theme.favorite->h) / 2);
+        if (marker_x - 6 - text_x < available) {
+            available = marker_x - 6 - text_x;
+        }
+    }
+    if (available < 1) {
+        available = 1;
+    }
+    /* Preview opacity belongs to the later compositor, not the text
+    * clip. Only overflow activation uses the live ui->preview edge. */
+    int activation_width = available;
+    int pane_width = mainui_preview_edge(&ui->theme) - text_x;
+    if (ui->preview.image && pane_width > 0 && pane_width < activation_width) {
+        activation_width = pane_width;
+    }
+    if (row_icon) {
+        SDL_Rect source = {0, 0, (Uint16)icon_width, (Uint16)ui->config.row_height};
+        if (source.w > row_icon->w) {
+            source.w = (Uint16)row_icon->w;
+        }
+        if (source.h > row_icon->h) {
+            source.h = (Uint16)row_icon->h;
+        }
+        source.y = (Sint16)((row_icon->h - source.h) / 2);
+        SDL_Rect dest = {(Sint16)icon_x, (Sint16)(y + (ui->config.row_height - source.h) / 2), 0,
+                         0};
+        SDL_BlitSurface(row_icon, &source, ui->screen, &dest);
+    }
+    SDL_Surface *label = !selected && ui->highlighted[i] ? ui->highlighted[i] : ui->labels[i];
+    if (!label) {
+        return;
+    }
+    int label_y = y + (ui->config.row_height - label->h) / 2;
+    ui->animate =
+        ui->animate || (selected && label->w > activation_width && ui->config.scroll_status == 2);
+    if (selected && ui->config.scroll_status == 2 && elapsed >= (unsigned)ui->config.scroll_delay &&
+        label->w > activation_width) {
+        MainUIBlit segments[2];
+        int n = mainui_marquee_stream(elapsed - (unsigned)ui->config.scroll_delay,
+                                      ui->config.scroll_speed, label->w, available, segments);
+        for (int part = 0; part < n; part++) {
+            SDL_Rect source = {(Sint16)segments[part].source_x, 0, (Uint16)segments[part].width,
+                               (Uint16)label->h};
+            SDL_Rect dest = {(Sint16)(text_x + segments[part].destination_x), (Sint16)label_y, 0,
+                             0};
+            SDL_BlitSurface(label, &source, ui->screen, &dest);
+        }
+    }
+    else {
+        SDL_Rect source = {0, 0, (Uint16)available, (Uint16)label->h};
+        SDL_Rect dest = {(Sint16)text_x, (Sint16)label_y, 0, 0};
+        SDL_BlitSurface(label, &source, ui->screen, &dest);
+    }
+}
+
+/* Rotate (on the device) and flip. A rectangle limits the rotated copy; the
+ * logical frame stays upright and complete for later partial frames. */
+static void present(MainUIApp *ui, const SDL_Rect *area)
+{
+    ui->presented_animating = ui->animate;
+    if (ui->real_device) {
+        /* Copy inverted pixels directly to the display. */
+        if (area) {
+            SDL_Rect rotated = mainui_rotated_rect(ui->screen, *area);
+            SDL_SetClipRect(ui->display, &rotated);
+        }
+        mainui_blit_rotated(ui->screen, ui->display);
+        SDL_SetClipRect(ui->display, NULL);
+    }
+    if (SDL_Flip(ui->display) == 0) {
+        mainui_mark(MAINUI_MARK_FIRST_FRAME);
+        mainui_count_add("frames", 1);
+    }
+}
+
+static bool compose_full_frame(MainUIApp *ui)
 {
     if (ui->catalog_job.thread) {
         /* Retain the previous frame until the catalog result is ready. */
@@ -369,100 +516,9 @@ bool mainui_draw_frame(MainUIApp *ui)
                                       : ui->preview_sync_once ? 80
                                                               : 0);
         ui->preview_sync_once = false;
-        int list_origin = 0;
-        int list_width = 640;
-        int outer = ui->config.rows <= 9 ? 20 : (ui->config.rows >= 14 ? 15 : 29 - ui->config.rows);
-        int gap = ui->config.rows <= 7 ? 15 : (ui->config.rows >= 17 ? 5 : 22 - ui->config.rows);
-        Uint32 elapsed = ui->snapshot ? ui->snapshot_elapsed : SDL_GetTicks() - ui->selected_at;
+        Uint32 elapsed = list_elapsed(ui);
         for (int i = 0; i < ui->config.rows && ui->view.start + i < ui->view.total; i++) {
-            int y = 60 + i * ui->config.row_height;
-            SDL_Rect clip = {(Sint16)list_origin, (Sint16)y, (Uint16)list_width,
-                             (Uint16)ui->config.row_height};
-            SDL_SetClipRect(ui->screen, &clip);
-            bool selected = ui->view.start + i == ui->view.selected;
-            if (selected) {
-                if (ui->theme.selection) {
-                    blit(ui->theme.selection, ui->screen, list_origin, y);
-                }
-                else {
-                    SDL_FillRect(ui->screen, &clip, SDL_MapRGB(ui->screen->format, 68, 68, 68));
-                }
-            }
-            bool folder_row =
-                ui->library ? mainui_library_is_folder(ui->library, ui->view.start + i)
-                            : ui->catalog && mainui_browser_folder(ui->catalog, ui->view.start + i);
-            SDL_Surface *row_icon = folder_row ? ui->theme.folder : ui->theme.icon;
-            /* Transparent ui->theme spacers still have a meaningful width.
-         * Reserving a synthetic 71px slot indented Silky by 70px. */
-            int icon_width = row_icon ? row_icon->w : 0;
-            int icon_x = list_origin + (ui->theme.icon_margin >= 0 ? ui->theme.icon_margin : 5);
-            int text_x = row_icon ? icon_x + icon_width + gap : list_origin + outer;
-            int available = list_width - outer - text_x;
-            if (ui->favorite_rows[i] &&
-                (!ui->library || ui->library->recent || ui->search.results) && ui->theme.favorite &&
-                !folder_row) {
-                bool spacer = ui->theme.icon && ui->theme.icon->w >= 120 &&
-                              ui->theme.icon->w >= 3 * ui->theme.icon->h;
-                int origin = spacer || (ui->config.dynamic_favorite_position && !ui->preview.image)
-                                 ? 0
-                                 : 250;
-                int marker_x = 640 - ui->theme.favorite->w - origin - 20;
-                blit(ui->theme.favorite, ui->screen, marker_x,
-                     y + (ui->config.row_height - ui->theme.favorite->h) / 2);
-                if (marker_x - 6 - text_x < available) {
-                    available = marker_x - 6 - text_x;
-                }
-            }
-            if (available < 1) {
-                available = 1;
-            }
-            /* Preview opacity belongs to the later compositor, not the text
-         * clip. Only overflow activation uses the live ui->preview edge. */
-            int activation_width = available;
-            int pane_width = mainui_preview_edge(&ui->theme) - text_x;
-            if (ui->preview.image && pane_width > 0 && pane_width < activation_width) {
-                activation_width = pane_width;
-            }
-            if (row_icon) {
-                SDL_Rect source = {0, 0, (Uint16)icon_width, (Uint16)ui->config.row_height};
-                if (source.w > row_icon->w) {
-                    source.w = (Uint16)row_icon->w;
-                }
-                if (source.h > row_icon->h) {
-                    source.h = (Uint16)row_icon->h;
-                }
-                source.y = (Sint16)((row_icon->h - source.h) / 2);
-                SDL_Rect dest = {(Sint16)icon_x,
-                                 (Sint16)(y + (ui->config.row_height - source.h) / 2), 0, 0};
-                SDL_BlitSurface(row_icon, &source, ui->screen, &dest);
-            }
-            SDL_Surface *label =
-                !selected && ui->highlighted[i] ? ui->highlighted[i] : ui->labels[i];
-            if (!label) {
-                continue;
-            }
-            int label_y = y + (ui->config.row_height - label->h) / 2;
-            ui->animate = ui->animate || (selected && label->w > activation_width &&
-                                          ui->config.scroll_status == 2);
-            if (selected && ui->config.scroll_status == 2 &&
-                elapsed >= (unsigned)ui->config.scroll_delay && label->w > activation_width) {
-                MainUIBlit segments[2];
-                int n =
-                    mainui_marquee_stream(elapsed - (unsigned)ui->config.scroll_delay,
-                                          ui->config.scroll_speed, label->w, available, segments);
-                for (int part = 0; part < n; part++) {
-                    SDL_Rect source = {(Sint16)segments[part].source_x, 0,
-                                       (Uint16)segments[part].width, (Uint16)label->h};
-                    SDL_Rect dest = {(Sint16)(text_x + segments[part].destination_x),
-                                     (Sint16)label_y, 0, 0};
-                    SDL_BlitSurface(label, &source, ui->screen, &dest);
-                }
-            }
-            else {
-                SDL_Rect source = {0, 0, (Uint16)available, (Uint16)label->h};
-                SDL_Rect dest = {(Sint16)text_x, (Sint16)label_y, 0, 0};
-                SDL_BlitSurface(label, &source, ui->screen, &dest);
-            }
+            draw_list_row(ui, i, elapsed);
         }
         /* Row clips must never leak into the next frame's header/background. */
         SDL_SetClipRect(ui->screen, NULL);
@@ -509,21 +565,70 @@ bool mainui_draw_frame(MainUIApp *ui)
         ui->running = false;
         return false;
     }
-    if (ui->real_device) {
-        /* Copy inverted pixels directly to the display; the logical frame
-         * remains upright for retained drawing and snapshots. */
-        mainui_blit_rotated(ui->screen, ui->display);
+    return true;
+}
+
+static bool draw_full_frame(MainUIApp *ui)
+{
+    if (!compose_full_frame(ui)) {
+        return false;
     }
-    ui->presented_animating = ui->animate;
     ui->presented_at = SDL_GetTicks();
     ui->presented_battery = ui->theme.battery_percent;
     ui->presented_wifi_online = ui->theme.wifi_online;
     ui->presented_wifi_signal = ui->theme.wifi_signal_level;
     snprintf(ui->presented_wifi_address, sizeof ui->presented_wifi_address, "%s",
              ui->theme.wifi_address);
-    if (SDL_Flip(ui->display) == 0) {
-        mainui_mark(MAINUI_MARK_FIRST_FRAME);
-        mainui_count_add("frames", 1);
-    }
+    present(ui, NULL);
     return true;
+}
+
+/* Recompose only the selected row, bottom-up, as a full frame layers it: fill,
+ * background, row, cover. The header (y < 60) and footer (y >= 420) keep their
+ * own clips, so nothing else is drawn in the list band on these screens. */
+static void draw_marquee_row(MainUIApp *ui)
+{
+    int row = ui->view.selected - ui->view.start;
+    SDL_Rect area = {0, (Sint16)(60 + row * ui->config.row_height), 640,
+                     (Uint16)ui->config.row_height};
+    SDL_SetClipRect(ui->screen, &area);
+    SDL_FillRect(ui->screen, &area, SDL_MapRGB(ui->screen->format, 24, 24, 24));
+    blit(ui->theme.background, ui->screen, 0, 0);
+    Uint32 elapsed = list_elapsed(ui);
+    draw_list_row(ui, row, elapsed);
+    SDL_SetClipRect(ui->screen, &area);
+    mainui_preview_draw(&ui->preview, &ui->theme, ui->screen);
+    SDL_SetClipRect(ui->screen, NULL);
+#ifndef MAINUI_ONION
+    /* Host check: a partial frame must equal a full frame, pixel for pixel. */
+    if (getenv("MAINUI_VERIFY_PARTIAL")) {
+        size_t size = (size_t)ui->screen->pitch * (size_t)ui->screen->h;
+        void *partial = malloc(size);
+        bool animate = ui->animate;
+        if (partial) {
+            memcpy(partial, ui->screen->pixels, size);
+            ui->animate = ui->letter_jump.active;
+            pinned_elapsed = &elapsed;
+            bool composed = compose_full_frame(ui);
+            pinned_elapsed = NULL;
+            if (composed && memcmp(partial, ui->screen->pixels, size)) {
+                fprintf(stderr, "MAINUI_VERIFY_PARTIAL: partial frame differs from full frame\n");
+                abort();
+            }
+            mainui_count_add("verified-partial", 1);
+            free(partial);
+        }
+        ui->animate = animate;
+    }
+#endif
+    present(ui, &area);
+}
+
+bool mainui_draw_frame(MainUIApp *ui)
+{
+    if (mainui_frame_marquee_only(ui, SDL_GetTicks())) {
+        draw_marquee_row(ui);
+        return true;
+    }
+    return draw_full_frame(ui);
 }

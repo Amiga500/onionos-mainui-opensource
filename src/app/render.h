@@ -25,4 +25,7 @@ bool mainui_draw_frame(MainUIApp *ui);
 /* True when an idle tick would repaint exactly the presented frame, so the
  * draw, rotation and flip can be skipped. Conservative: see render.c. */
 bool mainui_frame_current(const MainUIApp *ui, Uint32 now);
+/* True when only the selected row's marquee moved since the presented frame,
+ * so a frame can recompose just that row. */
+bool mainui_frame_marquee_only(const MainUIApp *ui, Uint32 now);
 #endif
