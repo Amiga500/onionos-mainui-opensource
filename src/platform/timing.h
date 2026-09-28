@@ -35,7 +35,7 @@ void mainui_timing_handoff(const char *path);
  * most every interval_ms and only if counters changed, so a session that ends
  * in SIGKILL (Onion's game switcher) still leaves its figures in the log. */
 void mainui_timing_interim(long interval_ms);
-/* Once per session, after workers stop. No output before this call.
+/* Once per session, after workers stop; only interim lines come before it.
  * Missing measurements are -1. EXIT is a pre-report mark, not process death. */
 void mainui_timing_report(void);
 #endif

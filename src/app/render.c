@@ -450,7 +450,7 @@ static bool compose_full_frame(MainUIApp *ui)
     }
     else {
         /* Keep rendered row labels until the visible window changes. Marquee
- * frames reuse these surfaces rather than rasterizing every 33ms.
+ * frames reuse these surfaces rather than rasterizing every 40 ms frame.
  */
         if (ui->cached_start != ui->view.start) {
             for (int i = 0; i < 20; i++) {
