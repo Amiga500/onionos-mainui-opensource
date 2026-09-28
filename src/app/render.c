@@ -395,16 +395,24 @@ static void present(MainUIApp *ui, const SDL_Rect *area)
     }
     previous = now;
     ui->presented_animating = ui->animate;
+    SDL_Rect shown = area ? *area : (SDL_Rect){0, 0, 0, 0};
     if (ui->real_device) {
         /* Copy inverted pixels directly to the display. */
         if (area) {
-            SDL_Rect rotated = mainui_rotated_rect(ui->screen, *area);
-            SDL_SetClipRect(ui->display, &rotated);
+            shown = mainui_rotated_rect(ui->screen, *area);
+            SDL_SetClipRect(ui->display, &shown);
         }
         mainui_blit_rotated(ui->screen, ui->display);
         SDL_SetClipRect(ui->display, NULL);
     }
-    if (SDL_Flip(ui->display) == 0) {
+    /* Without double buffering SDL_Flip is SDL_UpdateRect of the whole screen
+     * (Onion's SDL: "use SDL_UpdateRect when flip"). A row-only frame updates
+     * just its rectangle: less copying and a far smaller window for tearing. */
+    if (area && !(ui->display->flags & SDL_DOUBLEBUF)) {
+        SDL_UpdateRects(ui->display, 1, &shown);
+        mainui_count_add("frames", 1);
+    }
+    else if (SDL_Flip(ui->display) == 0) {
         mainui_mark(MAINUI_MARK_FIRST_FRAME);
         mainui_count_add("frames", 1);
     }
