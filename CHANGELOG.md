@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.2 - 2026-09-28
+
+### Fixes
+
+* Deleting a ROM whose cache entry was changed or removed after the list was read (for example by an external rebuild) no longer removes the ROM file while reporting it as preserved. Nothing is deleted, and the message asks to reopen the console (#6).
+* A long title waiting out a long scroll delay no longer holds up battery, Wi-Fi and list checks until it starts to scroll.
+
+### Performance
+
+* Idle CPU use is lower: static screens are no longer redrawn every 500 ms when nothing on them has changed (#9).
+* Cover images are scaled on the background decoder, so scrolling and opening lists no longer do this work on the UI thread (#8).
+* Scrolling titles are much cheaper: only the selected row is redrawn and sent to the display, instead of the whole screen.
+* Scrolling titles move smoothly: frames are paced on even 40 ms intervals with a constant whole-pixel step, and no longer pause for periodic full-screen repaints or Wi-Fi status checks. The `.romListTitleScroll` speed is rounded to a whole number of pixels per frame, that is to a multiple of 25 px/s (for example 120 px/s scrolls at 125 px/s); speeds below 25 px/s stay exact.
+
+### Other
+
+* With logging enabled, timing figures are also written once a minute while MainUI runs, so sessions ended by the game switcher still leave them in the log. See [docs/TIMING.md](docs/TIMING.md).
+* `--help` now lists `--refresh-caches` and `--version`, and neither option prints a timing report any more.
+* CI no longer runs a second time for release tags.
+
 ## 1.0.1 - 2026-09-27
 
 ### Fixes
