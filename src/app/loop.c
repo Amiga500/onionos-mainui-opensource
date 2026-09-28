@@ -451,7 +451,8 @@ bool mainui_wait_event(MainUIApp *ui, SDL_Event *event)
     if (!scripted_event && (ui->handheld_input || ui->real_device)) {
         mainui_input_device_event(event);
     }
-    ui->idle_tick = event->type == SDL_USEREVENT && event->user.code == MAINUI_TICK_CODE;
+    ui->idle_tick = event->type == SDL_USEREVENT && (event->user.code == MAINUI_TICK_CODE ||
+                                                     event->user.code == MAINUI_STATUS_CODE);
     if (!ui->idle_tick) {
         ui->active_at = SDL_GetTicks();
     }

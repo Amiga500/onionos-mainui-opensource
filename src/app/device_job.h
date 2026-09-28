@@ -5,6 +5,9 @@
 #include <SDL.h>
 #include <stdatomic.h>
 
+/* SDL_USEREVENT code posted when a status refresh (operation 0) finishes. */
+#define MAINUI_STATUS_CODE 2
+
 typedef struct {
     SDL_Thread *thread;
     atomic_bool cancel, done;

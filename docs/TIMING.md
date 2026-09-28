@@ -71,7 +71,9 @@ elsewhere, with no periodic supplicant requests when system.json has Wi-Fi off.
 On the home, console, list and apps screens, a maintenance tick that would repaint
 an identical frame is skipped: nothing may be animating or in flight, input must
 have settled for a second, and battery and Wi-Fi must be unchanged. A full repaint
-still happens at least every five seconds. While a title scrolls, those ticks
-recompose and present only the selected row. On the host,
+still happens at least every five seconds, or every 30 seconds while a title
+scrolls, when those ticks recompose and present only the selected row. The
+periodic Wi-Fi status refresh does not force full frames; its result repaints
+the screen only if the header changes. On the host,
 `MAINUI_VERIFY_PARTIAL=1` checks every such row frame against a full frame and
 aborts on the first differing pixel.

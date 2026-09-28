@@ -227,19 +227,23 @@ void mainui_prepare_frame(MainUIApp *ui)
  * repaint bounds any staleness, e.g. if another process drew on the display. */
 enum {
     IDLE_SETTLE_MS = 1000,
-    IDLE_REPAINT_MS = 5000
+    IDLE_REPAINT_MS = 5000,
+    /* A full repaint interrupts scrolling on the device; keep it rare there. */
+    MARQUEE_REPAINT_MS = 30000
 };
 
-/* Nothing but time has changed since the last presented frame. */
-static bool idle_unchanged(const MainUIApp *ui, Uint32 now)
+/* Nothing but time has changed since the last presented frame. The periodic
+ * status refresh only affects the header, which is compared below. */
+static bool idle_unchanged(const MainUIApp *ui, Uint32 now, Uint32 repaint_ms)
 {
+    bool status_only = !ui->device_job.thread ||
+                       (ui->device_job.operation == 0 && !ui->device_job.queued_operation);
     return ui->idle_tick && !ui->snapshot && !ui->input_script && !ui->letter_jump.active &&
-           !ui->catalog_job.thread && !ui->device_job.thread && !ui->about_job.thread &&
-           !ui->preview.thread && !ui->preview.pending && !ui->settings_open &&
-           !ui->settings_page.open && !ui->language_open && !ui->details.open &&
-           !ui->name_input.open && !ui->search_keyboard && !ui->context_open &&
-           ui->confirmation < 0 && !*ui->message_title && !ui->launch_pending &&
-           now - ui->presented_at < IDLE_REPAINT_MS &&
+           !ui->catalog_job.thread && status_only && !ui->about_job.thread && !ui->preview.thread &&
+           !ui->preview.pending && !ui->settings_open && !ui->settings_page.open &&
+           !ui->language_open && !ui->details.open && !ui->name_input.open &&
+           !ui->search_keyboard && !ui->context_open && ui->confirmation < 0 &&
+           !*ui->message_title && !ui->launch_pending && now - ui->presented_at < repaint_ms &&
            ui->presented_battery == ui->theme.battery_percent &&
            ui->presented_wifi_online == ui->theme.wifi_online &&
            ui->presented_wifi_signal == ui->theme.wifi_signal_level &&
@@ -248,7 +252,7 @@ static bool idle_unchanged(const MainUIApp *ui, Uint32 now)
 
 bool mainui_frame_current(const MainUIApp *ui, Uint32 now)
 {
-    return idle_unchanged(ui, now) && !ui->presented_animating &&
+    return idle_unchanged(ui, now, IDLE_REPAINT_MS) && !ui->presented_animating &&
            now - ui->active_at >= IDLE_SETTLE_MS;
 }
 
@@ -263,8 +267,8 @@ bool mainui_frame_marquee_only(const MainUIApp *ui, Uint32 now)
                  (ui->catalog && !ui->library && ui->catalog->depth > 1 && ui->view.total == 1) ||
                  (ui->library && ui->library->current >= 0 && ui->library->visible_count == 1 &&
                   ui->library->visible[0] == INT_MIN);
-    return idle_unchanged(ui, now) && ui->presented_animating && list && !empty && row >= 0 &&
-           row < ui->config.rows && ui->view.selected < ui->view.total &&
+    return idle_unchanged(ui, now, MARQUEE_REPAINT_MS) && ui->presented_animating && list &&
+           !empty && row >= 0 && row < ui->config.rows && ui->view.selected < ui->view.total &&
            ui->config.row_height > 0 && 60 + (row + 1) * ui->config.row_height <= 420;
 }
 

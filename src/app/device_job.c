@@ -21,6 +21,8 @@ static int perform(void *context)
     memset(job->password, 0, sizeof job->password);
     atomic_store_explicit(&job->done, true, memory_order_release);
     SDL_Event event = {.type = SDL_USEREVENT};
+    /* A status refresh only changes the header, which repaint checks compare. */
+    event.user.code = job->operation == 0 ? MAINUI_STATUS_CODE : 0;
     SDL_PushEvent(&event);
     return 0;
 }

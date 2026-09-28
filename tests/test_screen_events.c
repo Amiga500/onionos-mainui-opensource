@@ -209,6 +209,17 @@ static void idle_frame(MainUIApp *ui)
     ui->catalog_job.thread = (SDL_Thread *)ui;
     assert(!mainui_frame_current(ui, 2500));
     ui->catalog_job.thread = NULL;
+    /* The periodic status refresh changes only the header; other Wi-Fi work repaints. */
+    ui->device_job.thread = (SDL_Thread *)ui;
+    ui->device_job.operation = 0;
+    assert(mainui_frame_current(ui, 2500));
+    ui->device_job.queued_operation = 5;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->device_job.queued_operation = 0;
+    ui->device_job.operation = 4;
+    assert(!mainui_frame_current(ui, 2500));
+    ui->device_job.thread = NULL;
+    ui->device_job.operation = 0;
     ui->settings_page.open = true;
     assert(!mainui_frame_current(ui, 2500));
     ui->settings_page.open = false;
@@ -226,6 +237,19 @@ static void idle_frame(MainUIApp *ui)
     assert(!mainui_frame_current(ui, 2500));
     ui->theme.wifi_address[0] = 0;
     assert(mainui_frame_current(ui, 2500));
+    /* A scrolling title keeps row-only frames for 30 s; idle repaints every 5 s. */
+    ui->home = false;
+    ui->catalog = (MainUICatalog *)calloc(1, sizeof *ui->catalog);
+    assert(ui->catalog);
+    ui->catalog->depth = 1;
+    ui->config.row_height = 60;
+    ui->view = (MainUIViewport){3, 1, 0, 2};
+    ui->presented_animating = true;
+    assert(mainui_frame_marquee_only(ui, 2500) && mainui_frame_marquee_only(ui, 20000));
+    assert(!mainui_frame_marquee_only(ui, 32000));
+    ui->idle_tick = false;
+    assert(!mainui_frame_marquee_only(ui, 2500));
+    free(ui->catalog);
     reset(ui);
 }
 
