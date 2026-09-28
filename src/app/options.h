@@ -19,6 +19,8 @@ typedef struct {
     bool battery_override;
     bool start_systems;
     bool refresh_caches;
+    /* --help or --version: printed text only, no session and no timing report. */
+    bool informational;
     unsigned snapshot_elapsed;
     int battery_percent;
 } MainUIOptions;

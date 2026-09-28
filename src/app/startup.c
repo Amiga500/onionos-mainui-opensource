@@ -85,6 +85,7 @@ int mainui_setup_session(MainUIApp *ui, int argc, char **argv)
     MainUIOptions options;
     int parsed = mainui_options_parse(&options, argc, argv);
     if (parsed >= 0) {
+        ui->informational = options.informational;
         return parsed;
     }
     ui->dir = options.dir;

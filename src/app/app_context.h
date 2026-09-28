@@ -49,6 +49,7 @@ typedef struct {
     bool battery_override;
     bool start_systems;
     bool refresh_caches;
+    bool informational;
     unsigned snapshot_elapsed;
     int battery_percent;
     MainUIDeviceAdapter device_adapter;

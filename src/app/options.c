@@ -20,6 +20,7 @@ int mainui_options_parse(MainUIOptions *options, int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--version")) {
             puts("MainUI " MAINUI_VERSION);
+            options->informational = true;
             return 0;
         }
         if (!strcmp(argv[i], "--help")) {
@@ -38,7 +39,11 @@ int mainui_options_parse(MainUIOptions *options, int argc, char **argv)
                  "name field. --battery 0..100 / 500 / -1 "
                  "sets simulated header "
                  "status. --device-dir DIR reads simulated device status. --device real uses "
-                 "Onion /tmp status, wpa_supplicant control and keymon signals (Linux only).");
+                 "Onion /tmp status, wpa_supplicant control and keymon signals (Linux only).\n"
+                 "--refresh-caches rebuilds every console's ROM cache before the first frame "
+                 "(exit status 4 if a rebuild fails). --version prints the version. --help "
+                 "prints this text.");
+            options->informational = true;
             return 0;
         }
         if (!strcmp(argv[i], "--refresh-caches")) {

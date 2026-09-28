@@ -63,9 +63,13 @@ int main(int argc, char **argv)
         return 3;
     }
     int result = run(argc, argv, ui);
+    bool informational = ui->informational;
     free(ui);
-    /* Also report early initialization failures; completed teardown reports once. */
-    mainui_mark(MAINUI_MARK_EXIT);
-    mainui_timing_report();
+    /* Also report early initialization failures; completed teardown reports once.
+     * --help and --version print only their text. */
+    if (!informational) {
+        mainui_mark(MAINUI_MARK_EXIT);
+        mainui_timing_report();
+    }
     return result;
 }
