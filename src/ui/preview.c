@@ -143,8 +143,9 @@ static int decode_image(void *context)
 {
     MainUIPreview *preview = context;
     /* The worker owns only this copied path and decoded surface. It never reads
-     * catalog entries, which paging can invalidate, or touches the display. */
-    preview->decoded = mainui_artwork_load(preview->loading);
+     * catalog entries, which paging can invalidate, or touches the display.
+     * Scaling uses software surfaces only, so it stays off the UI thread too. */
+    preview->decoded = scale_image(mainui_artwork_load(preview->loading));
     atomic_store_explicit(&preview->done, true, memory_order_release);
     SDL_Event event = {.type = SDL_USEREVENT};
     SDL_PushEvent(&event);
@@ -165,7 +166,8 @@ static bool cached_image(MainUIPreview *preview, const char *path, bool select)
     return false;
 }
 
-static void cache_image(MainUIPreview *preview, const char *path, SDL_Surface *decoded)
+/* Takes ownership of an already scaled surface, or NULL for a failed read. */
+static void cache_image(MainUIPreview *preview, const char *path, SDL_Surface *scaled)
 {
     int slot = 0;
     for (int i = 1; i < MAINUI_THUMBNAIL_CACHE_SIZE; ++i) {
@@ -180,7 +182,7 @@ static void cache_image(MainUIPreview *preview, const char *path, SDL_Surface *d
         SDL_FreeSurface(preview->cache[slot].image);
     }
     snprintf(preview->cache[slot].key, sizeof preview->cache[slot].key, "%s", path);
-    preview->cache[slot].image = scale_image(decoded);
+    preview->cache[slot].image = scaled;
     preview->cache[slot].used = ++preview->clock;
 }
 
@@ -248,7 +250,7 @@ void mainui_preview_request_within(MainUIPreview *preview, MainUICatalog *catalo
     }
     if (!preview->thread && preview->pending) {
         if (synchronous) {
-            cache_image(preview, path, mainui_artwork_load(path));
+            cache_image(preview, path, scale_image(mainui_artwork_load(path)));
             cached_image(preview, path, true);
             preview->pending = false;
         }

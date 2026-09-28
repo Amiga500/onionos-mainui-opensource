@@ -54,6 +54,40 @@ static bool cancel_after(void *context)
     return ++*(int *)context > 40;
 }
 
+/* Large covers are scaled by the decode worker, not when the UI thread reaps them (#8). */
+static void cover_scaled_in_worker(const char *sd)
+{
+    MainUIPreview *preview = calloc(1, sizeof *preview);
+    MainUICatalog *catalog = calloc(1, sizeof *catalog);
+    MainUIEntry entry = {0};
+    char path[4096];
+    assert(preview && catalog);
+    snprintf(catalog->sd, sizeof catalog->sd, "%s", sd);
+    snprintf(path, sizeof path, "%s/large-cover.png", sd);
+    SDL_Surface *picture =
+        SDL_CreateRGBSurface(SDL_SWSURFACE, 500, 720, 32, 0xff0000, 0xff00, 0xff, 0);
+    assert(picture && SDL_SaveBMP(picture, path) == 0);
+    SDL_FreeSurface(picture);
+    catalog->depth = 1;
+    catalog->pages[1].entries = &entry;
+    catalog->pages[1].count = 1;
+    entry.artwork = entry.path = entry.label = path;
+    mainui_preview_request(preview, catalog, NULL, 0, false);
+    assert(preview->thread);
+    Uint32 started = SDL_GetTicks();
+    while (!atomic_load_explicit(&preview->done, memory_order_acquire)) {
+        assert(SDL_GetTicks() - started < 5000);
+        SDL_Delay(1);
+    }
+    assert(preview->decoded && preview->decoded->w == 250 && preview->decoded->h == 360);
+    mainui_preview_request(preview, catalog, NULL, 0, false);
+    assert(!preview->thread && preview->image && preview->image->w == 250);
+    mainui_preview_close(preview);
+    free(preview);
+    free(catalog);
+    remove(path);
+}
+
 static void thumbnail_cache(const char *sd)
 {
     enum {
@@ -227,6 +261,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2 && SDL_Init(SDL_INIT_TIMER) == 0);
     const char *sd = argv[1];
+    cover_scaled_in_worker(sd);
     thumbnail_cache(sd);
     MainUICatalog *catalog = calloc(1, sizeof *catalog);
     assert(catalog && mainui_catalog_open(catalog, sd, false));
