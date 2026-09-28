@@ -160,6 +160,24 @@ static bool delete_locked(MainUICatalog *catalog, MainUIViewport *view, int rows
              sqlite3_bind_text(statement, 1, entry->cache_key, -1, SQLITE_TRANSIENT) == SQLITE_OK;
         sqlite3_free(sql);
     }
+    /* The list may predate the cache. Recovery reads a missing row as a committed
+     * deletion, so confirm the row before staging the ROM. BEGIN IMMEDIATE keeps
+     * other writers out until the DELETE runs. */
+    bool stale = false;
+    if (ok && cached) {
+        sqlite3_stmt *probe = NULL;
+        char *sql = sqlite3_mprintf("SELECT 1 FROM \"%w\" WHERE type=0 AND path=?1 LIMIT 1",
+                                    page->cache_table);
+        int found = SQLITE_ERROR;
+        if (sql && sqlite3_prepare_v2(database, sql, -1, &probe, NULL) == SQLITE_OK &&
+            sqlite3_bind_text(probe, 1, entry->cache_key, -1, SQLITE_TRANSIENT) == SQLITE_OK) {
+            found = sqlite3_step(probe);
+        }
+        sqlite3_finalize(probe);
+        sqlite3_free(sql);
+        stale = found == SQLITE_DONE;
+        ok = found == SQLITE_ROW;
+    }
     bool prepared = false;
     if (ok && cached) {
         prepared = mainui_delete_prepare(page->cache_file, original, entry->cache_key, temporary);
@@ -198,8 +216,9 @@ static bool delete_locked(MainUICatalog *catalog, MainUIViewport *view, int rows
                                                           catalog->pages[1].path, catalog->sd)
                                   : (!moved || mainui_move_file_new_locked(temporary, original));
         snprintf(catalog->error, sizeof catalog->error, "%s",
-                 recovered ? "Deletion failed; ROM and cache were preserved."
-                           : "Deletion failed. ROM retained in its recovery file.");
+                 stale       ? "ROM list is out of date; nothing was deleted. Reopen the console."
+                 : recovered ? "Deletion failed; ROM and cache were preserved."
+                             : "Deletion failed. ROM retained in its recovery file.");
         return false;
     }
     bool removed = !cached || (prepared ? mainui_delete_recover(page->cache_file, page->cache_table,

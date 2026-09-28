@@ -140,6 +140,21 @@ unicode_rom.write_bytes(b"Unicode ROM")
 assert run("cache").returncode == 0
 assert run("delete").returncode == 0
 assert not unicode_rom.exists()
+# A cache row changed after the list was read: nothing is staged or deleted (#6).
+stale_rom = SD / "Roms/Test/aaa-stale.nes"
+for change in ("UPDATE Test_roms SET path=path||'.moved' WHERE path LIKE '%/aaa-stale.nes'",
+               "DELETE FROM Test_roms WHERE path LIKE '%/aaa-stale.nes'"):
+    stale_rom.write_bytes(b"stale ROM")
+    assert run("cache").returncode == 0
+    result = run("delete-stale", change)
+    assert result.returncode == 3, (result.returncode, result.stderr)
+    assert stale_rom.exists(), "ROM deleted although its cache row was gone"
+    assert stale_rom.read_bytes() == b"stale ROM"
+    assert "out of date" in result.stdout, result.stdout
+    assert not Path(str(cache) + ".delete.json").exists()
+    assert not list(stale_rom.parent.glob(stale_rom.name + ".mainui-delete*"))
+stale_rom.unlink()
+assert run("cache").returncode == 0
 
 # Over-limit lists can be reduced without discarding the remaining records.
 over_limit = [dict(label="value", rompath="/mnt/SDCARD/Roms/Test/value.nes")]

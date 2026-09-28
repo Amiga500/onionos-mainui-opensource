@@ -7,6 +7,7 @@
 #include "platform/files.h"
 #include "platform/launch.h"
 #include "platform/system_config.h"
+#include "sqlite3.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,12 +109,26 @@ int main(int argc, char **argv)
         free(catalog);
         return ok ? 0 : 3;
     }
-    if (!strcmp(mode, "delete") || !strcmp(mode, "recover")) {
+    if (!strcmp(mode, "delete") || !strcmp(mode, "delete-stale") || !strcmp(mode, "recover")) {
         MainUICatalog *catalog = calloc(1, sizeof *catalog);
         MainUIViewport view = {0};
         bool ok = catalog && mainui_catalog_open(catalog, root, false) &&
                   mainui_catalog_enter(catalog, 0);
-        if (ok && !strcmp(mode, "delete")) {
+        if (ok && !strcmp(mode, "delete-stale")) {
+            /* Another writer changes the cache after the list was read. */
+            sqlite3 *database = NULL;
+            snprintf(path, sizeof path, "%s/Roms/Test/Test_cache6.db", root);
+            bool changed = sqlite3_open(path, &database) == SQLITE_OK &&
+                           sqlite3_exec(database, key, NULL, NULL, NULL) == SQLITE_OK &&
+                           sqlite3_changes(database) > 0;
+            sqlite3_close(database);
+            if (!changed) {
+                mainui_catalog_close(catalog);
+                free(catalog);
+                return 4;
+            }
+        }
+        if (ok && strcmp(mode, "recover")) {
             mainui_viewport_restore(&view, mainui_browser_count(catalog), 6, 0, 0, 5);
             ok = mainui_browser_delete(catalog, &view, 6);
             if (!ok) {
