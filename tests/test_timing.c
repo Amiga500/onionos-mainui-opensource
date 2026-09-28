@@ -121,6 +121,39 @@ int mainui_suite_timing(void)
     long measured = -1;
     assert(scan_time && sscanf(scan_time, "scan-ms %ld", &measured) == 1);
     assert(measured >= 1000);
+    /* Interim lines survive a SIGKILL: written only when counters changed,
+     * and never after the final report. */
+    assert(ftruncate(fileno(capture), 0) == 0);
+    rewind(capture);
+    mainui_mark(MAINUI_MARK_ENTRY);
+    mainui_timing_interim(0);
+    read_report(capture, output);
+    assert(!*output);
+    mainui_count_add("frames", 7);
+    mainui_count_add("gap-40", 5);
+    mainui_timing_interim(60000);
+    read_report(capture, output);
+    assert(!*output);
+    mainui_timing_interim(0);
+    read_report(capture, output);
+    assert(strstr(output, "[timing] interim uptime-ms ") && strstr(output, " frames 7 ") &&
+           strstr(output, " gap-40 5 "));
+    size_t first = strlen(output);
+    mainui_timing_interim(0);
+    read_report(capture, output);
+    assert(strlen(output) == first);
+    mainui_count_add("frames", 1);
+    mainui_timing_interim(0);
+    read_report(capture, output);
+    assert(strstr(output + first, " frames 8 "));
+    mainui_timing_report();
+    read_report(capture, output);
+    assert(strstr(output, "[timing] peak-rss ") && strstr(output, " frames 8 "));
+    size_t reported = strlen(output);
+    mainui_count_add("frames", 1);
+    mainui_timing_interim(0);
+    read_report(capture, output);
+    assert(strlen(output) == reported);
     /* Default wrapper routing suppresses collection as well as the report. */
     int null_output = open("/dev/null", O_WRONLY);
     assert(null_output >= 0 && dup2(null_output, STDOUT_FILENO) >= 0);
@@ -132,6 +165,7 @@ int mainui_suite_timing(void)
     assert(ftruncate(fileno(capture), 0) == 0);
     rewind(capture);
     assert(dup2(fileno(capture), STDOUT_FILENO) >= 0);
+    mainui_timing_interim(0);
     mainui_timing_report();
     read_report(capture, output);
     assert(!*output);

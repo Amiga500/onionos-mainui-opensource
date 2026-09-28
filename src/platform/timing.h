@@ -31,6 +31,10 @@ void mainui_timing_finish(const char *name, struct timespec start);
 /* UI thread: optional tmpfs exchange, read against ENTRY, scoped to this boot.
  * Configure only for a real device; no SD writes or additional logging flag. */
 void mainui_timing_handoff(const char *path);
+/* UI thread, called often. When logging, writes an interim counter line at
+ * most every interval_ms and only if counters changed, so a session that ends
+ * in SIGKILL (Onion's game switcher) still leaves its figures in the log. */
+void mainui_timing_interim(long interval_ms);
 /* Once per session, after workers stop. No output before this call.
  * Missing measurements are -1. EXIT is a pre-report mark, not process death. */
 void mainui_timing_report(void);

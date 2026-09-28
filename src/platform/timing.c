@@ -21,6 +21,9 @@ static const char *const names[] = {"frames",      "roms",         "cache",     
 static atomic_long counters[sizeof names / sizeof *names];
 static char exchange[4096], boot_id[64];
 static int64_t away_ms = -1;
+/* Interim reports: last emission and the counters it showed. */
+static struct timespec interim_at;
+static long interim_counters[sizeof names / sizeof *names];
 
 static int64_t elapsed(struct timespec from, struct timespec to)
 {
@@ -49,7 +52,9 @@ void mainui_mark(MainUIMark mark)
         for (size_t i = 0; i < sizeof names / sizeof *names; ++i) {
             atomic_store_explicit(&counters[i], !strcmp(names[i], "cache") ? -1 : 0,
                                   memory_order_relaxed);
+            interim_counters[i] = !strcmp(names[i], "cache") ? -1 : 0;
         }
+        clock_gettime(CLOCK_MONOTONIC, &interim_at);
     }
     if (!enabled || reported || (mark == MAINUI_MARK_FIRST_FRAME && valid[mark]) ||
         (mark == MAINUI_MARK_EVENT && valid[MAINUI_MARK_HANDOFF])) {
@@ -203,6 +208,45 @@ static long peak_rss(void)
     return value;
 }
 
+/* " peak-rss N KB name value ..." for the current counters. */
+static int format_counters(char *out, size_t size, long snapshot[])
+{
+    int used = snprintf(out, size, " peak-rss %ld KB", peak_rss());
+    for (size_t i = 0; i < sizeof names / sizeof *names && used > 0 && (size_t)used < size; ++i) {
+        snapshot[i] = atomic_load_explicit(&counters[i], memory_order_relaxed);
+        used += snprintf(out + used, size - (size_t)used, " %s %ld", names[i], snapshot[i]);
+    }
+    return used;
+}
+
+void mainui_timing_interim(long interval_ms)
+{
+    if (!enabled || reported) {
+        return;
+    }
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 || elapsed(interim_at, now) < interval_ms) {
+        return;
+    }
+    bool changed = false;
+    for (size_t i = 0; i < sizeof names / sizeof *names; ++i) {
+        changed |= atomic_load_explicit(&counters[i], memory_order_relaxed) != interim_counters[i];
+    }
+    if (!changed) {
+        return;
+    }
+    interim_at = now;
+    char line[1024];
+    int used = snprintf(line, sizeof line, "[timing] interim uptime-ms %" PRId64,
+                        valid[MAINUI_MARK_ENTRY] ? elapsed(marks[MAINUI_MARK_ENTRY], now) : -1);
+    used += format_counters(line + used, sizeof line - (size_t)used, interim_counters);
+    if (used > 0 && (size_t)used < sizeof line - 1) {
+        line[used++] = '\n';
+        fwrite(line, 1, (size_t)used, stdout);
+        fflush(stdout);
+    }
+}
+
 void mainui_timing_report(void)
 {
     if (!enabled || reported) {
@@ -226,12 +270,8 @@ void mainui_timing_report(void)
                          duration(MAINUI_MARK_HANDOFF, MAINUI_MARK_EXIT),
                          duration(MAINUI_MARK_EVENT, MAINUI_MARK_EXIT));
     }
-    used += snprintf(report + used, sizeof report - (size_t)used, "[timing] peak-rss %ld KB",
-                     peak_rss());
-    for (size_t i = 0; i < sizeof names / sizeof *names; ++i) {
-        used += snprintf(report + used, sizeof report - (size_t)used, " %s %ld", names[i],
-                         atomic_load_explicit(&counters[i], memory_order_relaxed));
-    }
+    used += snprintf(report + used, sizeof report - (size_t)used, "[timing]");
+    used += format_counters(report + used, sizeof report - (size_t)used, interim_counters);
     report[used++] = '\n';
     fwrite(report, 1, (size_t)used, stdout);
     save_handoff();

@@ -2,7 +2,7 @@
 
 Keep the installed wrapper's existing Onion logging switch: `.tmp_update/config/.logging`. When it exists, the wrapper appends stdout and stderr to `.tmp_update/logs/MainUI.log`. The wrapper was not changed for timing support. Without that marker stdout is /dev/null: startup detects this once and subsequent marks/counters return without reading the clock or updating counters. The one-time detection still has a cost; no fixed nanosecond claim is made.
 
-Marks use CLOCK_MONOTONIC and integer timespec arithmetic. Only the UI thread records timestamps. Catalog counters use atomic longs, since scans can run on a worker. No timing output is written while the UI is running. After workers stop, teardown emits one block to stdout, including peak RSS from /proc/self/status (VmHWM, in KiB). A direct host run also reports when stdout is a terminal or captured file.
+Marks use CLOCK_MONOTONIC and integer timespec arithmetic. Only the UI thread records timestamps. Catalog counters use atomic longs, since scans can run on a worker. While the UI runs, at most one interim line per minute is written, and only when counters changed: `[timing] interim uptime-ms N` followed by the same counters as the final report. Onion stops MainUI with SIGKILL when the Menu button opens the game switcher, so that session never reaches teardown; its last interim line is then the figure to use. After workers stop, teardown emits one block to stdout, including peak RSS from /proc/self/status (VmHWM, in KiB). A direct host run also reports when stdout is a terminal or captured file.
 
 ## Reading the report
 
@@ -47,7 +47,9 @@ build/unit-tests timing
 
 Use separate logged sessions with the same theme, brightness, ROM list and network
 conditions before and after the change. In each session, spend 60 seconds in one
-of these scenarios, then exit to emit the timing report:
+of these scenarios, then leave by launching a game from the list, which emits the
+final report (leaving through the game switcher kills MainUI; use its last interim
+line instead):
 
 1. Idle on a short title.
 2. Idle on a long title with marquee scrolling enabled.
