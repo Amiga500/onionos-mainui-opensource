@@ -439,13 +439,13 @@ static bool compose_full_frame(MainUIApp *ui)
     else if (ui->settings_open) {
         mainui_draw_settings(ui->screen, &ui->theme, &ui->settings);
     }
-    else if (ui->apps) {
+    else if (ui->apps && !ui->search.results) {
         mainui_draw_apps(ui->screen, &ui->theme, ui->apps, &ui->apps_view);
     }
-    else if (ui->home) {
+    else if (ui->home && !ui->search.results) {
         mainui_menu_draw_home(&ui->menu_view, ui->screen, &ui->menu, &ui->home_view);
     }
-    else if (ui->catalog && !ui->catalog->depth && !ui->library) {
+    else if (ui->catalog && !ui->catalog->depth && !ui->library && !ui->search.results) {
         mainui_menu_draw_systems(&ui->menu_view, ui->screen, ui->catalog, &ui->view);
     }
     else {

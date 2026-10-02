@@ -288,7 +288,10 @@ bool mainui_screen_name_input_key(MainUIApp *ui, const SDL_keysym *key)
                                          .view = &source_view,
                                          .home = &ui->home_view};
             ui->reload_search = false;
+            /* Remember that A submitted. Cleared only by its keyup. The result
+             * list must ignore that same press, including repeats after the job. */
             ui->search_confirm_held = key->sym == SDLK_RETURN;
+            ui->search.release_pending = ui->search_confirm_held;
             if (!mainui_catalog_job_start(&ui->catalog_job, JOB_SEARCH, &source, ui->sd,
                                           ui->config.case_sensitive, ui->config.rows,
                                           ui->name_input.text, ++ui->catalog_generation)) {
@@ -781,6 +784,21 @@ bool mainui_screen_list_key(MainUIApp *ui, SDLKey key)
     if (ui->library) {
         bool changed = false;
         if (key == SDLK_ESCAPE) {
+            /* Search results are a library with current == -1. Back must restore
+             * the console list, not the home menu, and must not free the results
+             * twice (search_close owns them). */
+            if (ui->search.results) {
+                ui->view = ui->search.source_view;
+                ui->library = NULL;
+                mainui_search_close(&ui->search);
+                ui->cached_start = -1;
+                if (ui->heading) {
+                    SDL_FreeSurface(ui->heading);
+                }
+                ui->heading = TTF_RenderUTF8_Blended(
+                    ui->theme.title_font, mainui_catalog_heading(ui->catalog), ui->heading_color);
+                return true;
+            }
             ui->library->views[ui->library->current + 1] = ui->view;
             if (mainui_library_back(ui->library)) {
                 changed = true;
@@ -1143,7 +1161,10 @@ bool mainui_dispatch_event(MainUIApp *ui, SDL_Event *event)
     }
     if (ui->catalog_job.thread) {
         if (event->type == SDL_KEYUP && mainui_input_key(event->key.keysym.sym) == SDLK_RETURN) {
+            /* Released while the job was running: do not launch result 0, and
+             * do not swallow the next intentional A. */
             ui->search_confirm_held = false;
+            ui->search.release_pending = false;
         }
         if (event->type == SDL_KEYDOWN && mainui_input_key(event->key.keysym.sym) == SDLK_ESCAPE) {
             mainui_catalog_job_cancel(&ui->catalog_job);
