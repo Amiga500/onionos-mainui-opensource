@@ -202,7 +202,8 @@ bool mainui_reap_jobs(MainUIApp *ui)
             found = (MainUISearch){0};
             ui->library = ui->search.results;
             ui->view = ui->search.view;
-            ui->search.release_pending = ui->search_confirm_held;
+            ui->home = false;
+            ui->search.release_pending = ui->search.release_pending || ui->search_confirm_held;
             if (!ui->reload_search) {
                 mainui_launch_clear_search(ui->handoff_dir);
             }
